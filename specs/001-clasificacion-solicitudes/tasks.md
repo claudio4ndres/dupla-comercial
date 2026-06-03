@@ -17,8 +17,10 @@ Orden TDD: cada tarea escribe **el test primero (rojo)**, luego el mínimo códi
 - [x] **T4 · Aislamiento multi-tenant (endpoint).** Usuario de empresa A pide clasificar
   solicitud de empresa B → `404`. (Dependencia `obtener_empresa_actual` inyectable; el
   repositorio filtra por `empresa_id` emulando la RLS.) ✅
-- [ ] **T5 · RLS en DB (Supabase local).** Instalar Supabase CLI, `supabase start`, test
-  SQL: empresa A no lee solicitud de empresa B (CA multi-tenant a nivel de datos).
+- [x] **T5 · RLS en DB (Supabase local).** `supabase start` + test pgTAP en
+  `supabase/tests/`: empresa A no lee solicitud de empresa B (CA multi-tenant a nivel
+  de datos). Verificado el rojo (sin RLS A ve filas ajenas) y el verde con `supabase
+  test db` (4 tests PASS). ✅
 - [x] **T6 · Manejo de error del LLM.** Si el SDK lanza excepción → endpoint responde
   `502` (no 500 crudo) y la solicitud queda sin clasificar (reintentar). ✅
 
