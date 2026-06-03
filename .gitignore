@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+apps/api/.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+
+# Entorno / secretos
+.env
+.env.*
+!.env.example
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
