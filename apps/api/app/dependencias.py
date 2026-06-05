@@ -6,8 +6,11 @@ test); por eso esos proveedores siguen como `NotImplementedError`. El cliente
 Anthropic real ya está cableado (T7a): se construye con la key de `Settings`.
 """
 from functools import lru_cache
+from uuid import UUID
 
+import jwt
 from anthropic import AsyncAnthropic
+from fastapi import Header, HTTPException, status
 
 from app.config import obtener_settings
 
@@ -70,7 +73,43 @@ def obtener_cliente_anthropic() -> AsyncAnthropic:
     return AsyncAnthropic(api_key=obtener_settings().anthropic_api_key)
 
 
-def obtener_empresa_actual():
-    raise NotImplementedError(
-        "Auth (JWT de Supabase) pendiente; en tests se inyecta una empresa_id."
-    )
+def obtener_empresa_actual(
+    authorization: str | None = Header(default=None),
+) -> UUID:
+    """Auth real (T7b): saca `empresa_id` del JWT de Supabase del usuario.
+
+    Verifica la firma HS256 con el secreto del proyecto (`SUPABASE_JWT_SECRET`).
+    El `empresa_id` viaja como claim del token (configurado en Supabase con un
+    *custom access token hook*). Cualquier fallo → `401` (no se filtra detalle).
+    La RLS de Postgres es la barrera final multi-tenant; esto solo identifica al
+    usuario para construir su repositorio con su JWT."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Falta el token de autenticación",
+        )
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        claims = jwt.decode(
+            token,
+            obtener_settings().supabase_jwt_secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido"
+        )
+    empresa_id = claims.get("empresa_id")
+    if not empresa_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El token no trae empresa_id",
+        )
+    try:
+        return UUID(str(empresa_id))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="empresa_id inválido en el token",
+        )

@@ -25,6 +25,10 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
 
+    # Secreto JWT del proyecto Supabase (HS256). Verifica los tokens de los
+    # usuarios y de él se extrae `empresa_id` (T7b). Settings → Auth → JWT Secret.
+    supabase_jwt_secret: str = ""
+
 
 @lru_cache
 def obtener_settings() -> Settings:
