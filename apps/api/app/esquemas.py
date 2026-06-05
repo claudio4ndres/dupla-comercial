@@ -36,3 +36,35 @@ class ResumenPoller(BaseModel):
 
     empresas_procesadas: int
     solicitudes_creadas: int
+
+
+# Conversación con Javo (003) ------------------------------------------------
+# El front usa `t1`/`t2` (tipo confirmado en pantalla), distinto del `tipo_1`/
+# `tipo_2` que persiste el clasificador. Se mantienen separados a propósito.
+TipoConversacion = Literal["t1", "t2"]
+
+
+class MensajeConversacion(BaseModel):
+    """Un turno del chat tal como lo envía el front: `rol` es `usuario`, `javo` o
+    `sistema`; el servicio lo normaliza al formato `user`/`assistant` de Anthropic."""
+
+    rol: str
+    contenido: str
+
+
+class EntradaConversacion(BaseModel):
+    """Cuerpo de `POST /conversaciones/responder`: el tipo confirmado y el historial.
+
+    `solicitud_id` viaja para trazabilidad/futuro (persistencia), pero el endpoint
+    es sin estado: hoy no lee ni escribe datos de empresa.
+    """
+
+    tipo: TipoConversacion
+    mensajes: list[MensajeConversacion]
+    solicitud_id: str | None = None
+
+
+class RespuestaConversacion(BaseModel):
+    """Respuesta del endpoint: el texto que Javo le muestra al usuario."""
+
+    texto: str

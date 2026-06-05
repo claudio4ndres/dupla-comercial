@@ -37,6 +37,39 @@ class ClienteAnthropicFake:
         self.messages = _MensajesFake(datos, self.llamadas)
 
 
+class _BloqueTexto:
+    """Imita un bloque `text` de una respuesta del SDK de Anthropic."""
+
+    type = "text"
+
+    def __init__(self, texto: str):
+        self.text = texto
+
+
+class _RespuestaTextoFake:
+    def __init__(self, texto: str):
+        self.content = [_BloqueTexto(texto)]
+
+
+class _MensajesTextoFake:
+    def __init__(self, texto: str, registro: list):
+        self._texto = texto
+        self._registro = registro
+
+    async def create(self, **kwargs):
+        self._registro.append(kwargs)
+        return _RespuestaTextoFake(self._texto)
+
+
+class ClienteAnthropicTextoFake:
+    """Doble del cliente AsyncAnthropic para conversación: devuelve un texto fijo
+    (bloque `text`) y registra las llamadas para verificar modelo/mensajes/system."""
+
+    def __init__(self, texto: str = "Respuesta de Javo (demo)."):
+        self.llamadas: list = []
+        self.messages = _MensajesTextoFake(texto, self.llamadas)
+
+
 class _MensajesQueFalla:
     def __init__(self, excepcion: Exception):
         self._excepcion = excepcion
