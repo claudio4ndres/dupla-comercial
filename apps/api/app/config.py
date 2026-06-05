@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # usuarios y de él se extrae `empresa_id` (T7b). Settings → Auth → JWT Secret.
     supabase_jwt_secret: str = ""
 
+    # PostgREST del proyecto (T7c). `supabase_url` → API URL; `supabase_anon_key`
+    # → clave pública anónima. El repo real pega acá con el JWT del usuario.
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+
 
 @lru_cache
 def obtener_settings() -> Settings:

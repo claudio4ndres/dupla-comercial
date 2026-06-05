@@ -32,9 +32,11 @@ Orden TDD: cada tarea escribe **el test primero (rojo)**, luego el mínimo códi
 - [x] **T7b · Auth `obtener_empresa_actual` (JWT de Supabase).** Verifica el JWT (HS256
   + secreto) y extrae `empresa_id` del claim.
   - Test: JWT válido → `empresa_id`; sin token / firma inválida → `401`. ✅
-- [ ] **T7c · `RepositorioSolicitudesSupabase`.** Habla con PostgREST usando el JWT del
+- [x] **T7c · `RepositorioSolicitudesSupabase`.** Habla con PostgREST usando el JWT del
   usuario; la **RLS** filtra (no el backend). Construido por request con el token.
-  - Test: integración contra Supabase local (A lee lo suyo, no lee lo de B).
+  - Test: unitario con transporte httpx mockeado (manda el JWT del usuario, pega al
+    endpoint correcto y mapea la fila). ✅ La integración A-vs-B contra `supabase
+    start` queda para el entorno de integración (TR3).
 
 > **Decisión (2026-06):** se adelanta el frontend ANTES del cableado real (T7a/b/c)
 > para tener algo visual que mostrarle a Javier. El front se construye con el `fetch`

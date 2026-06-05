@@ -13,11 +13,30 @@ from anthropic import AsyncAnthropic
 from fastapi import Header, HTTPException, status
 
 from app.config import obtener_settings
+from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
 
 
-def obtener_repositorio_solicitudes():
-    raise NotImplementedError(
-        "Repositorio real (Supabase) pendiente; en tests se inyecta uno en memoria."
+def _jwt_del_header(authorization: str | None) -> str:
+    """Extrae el JWT del header `Authorization: Bearer ...` o lanza 401."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Falta el token de autenticación",
+        )
+    return authorization.split(" ", 1)[1].strip()
+
+
+def obtener_repositorio_solicitudes(
+    authorization: str | None = Header(default=None),
+) -> RepositorioSolicitudesSupabase:
+    """Repositorio real de solicitudes (T7c), construido POR REQUEST con el JWT
+    del usuario para que la RLS filtre por su empresa. En los tests se sobrescribe
+    con uno en memoria vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    return RepositorioSolicitudesSupabase(
+        settings.supabase_url,
+        settings.supabase_anon_key,
+        _jwt_del_header(authorization),
     )
 
 
