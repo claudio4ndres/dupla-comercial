@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_anon_key: str = ""
 
+    # App OAuth de Google (TR1): client_id/secret de Google Cloud Console
+    # (APIs & Services → Credentials). NO son secretos del usuario; con ellos el
+    # backend refresca el access token de Gmail de cada casilla y canjea el code
+    # del consentimiento. `redirect_uri` es la URL de callback registrada.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = ""
+
 
 @lru_cache
 def obtener_settings() -> Settings:

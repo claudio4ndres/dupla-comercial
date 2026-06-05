@@ -114,9 +114,15 @@ credenciales reales.
 > Igual que en la Spec 001 (T7a/b/c), estos van **después** de que el núcleo mockeado
 > esté verde, y dependen de la spec de auth real (Supabase JWT) y de infra (GCP).
 
-- [ ] **TR1 · Cliente Gmail real + refresh OAuth.** `google-api-python-client` /
-  `httpx`; cursor con `historyId` (`users.history.list`), fallback `after:`/
-  `internalDate`. Test de construcción **sin red**.
+- [x] **TR1 · Cliente Gmail real + refresh OAuth.** `httpx`; cursor con `historyId`
+  (`users.history.list`), fallback `after:` + baseline desde `users.getProfile`. El
+  refresh token se resuelve perezosamente contra `AlmacenSecretos` (la fábrica queda
+  síncrona como el Protocol). `app/servicios/gmail_real.py`.
+  - Tests (sin red, transporte httpx mockeado): construcción sin disparar peticiones;
+    con cursor usa `history.list`, mapea From/Subject/cuerpo (texto plano y multipart)
+    y avanza el cursor; sin cursor usa `after:` y fija el baseline; refresh inválido o
+    sin secreto → `ErrorAutenticacionGmail` (CA7). ✅ El cableado del provider
+    (`obtener_fabrica_cliente_gmail`) va con TR2 (necesita el `AlmacenSecretos` real).
 - [ ] **TR2 · `AlmacenSecretos` real (Google Secret Manager).** Implementa la interfaz
   inyectable; en dev/test la impl local en memoria. Test con cliente de GCP mockeado.
 - [ ] **TR3 · Repositorios Supabase.** `service role` para el poller (fija `empresa_id`
