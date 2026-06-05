@@ -3,10 +3,13 @@
 La implementación real con Supabase (que respeta la RLS usando el JWT del usuario)
 se hará en una tarea de integración aparte, con su propio test.
 """
-from typing import Protocol
-from uuid import UUID
+from typing import TYPE_CHECKING, Protocol
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from app.servicios.gmail import MensajeCorreo
 
 
 class Solicitud(BaseModel):
@@ -15,11 +18,13 @@ class Solicitud(BaseModel):
     id: UUID
     empresa_id: UUID
     remitente: str = ""
+    correo_origen: str | None = None
     asunto: str = ""
     cuerpo: str
     resumen: str | None = None
     tipo: str = "sin_clasificar"
     estado: str = "nueva"
+    gmail_msg_id: str | None = None
 
 
 class RepositorioSolicitudes(Protocol):
@@ -31,6 +36,10 @@ class RepositorioSolicitudes(Protocol):
         self, solicitud_id: UUID, empresa_id: UUID, resumen: str, tipo: str
     ) -> Solicitud: ...
 
+    async def crear_desde_correo(
+        self, empresa_id: UUID, mensaje: "MensajeCorreo"
+    ) -> bool: ...
+
 
 class RepositorioSolicitudesEnMemoria:
     """Implementación en memoria para tests. Emula el aislamiento por empresa de la
@@ -38,6 +47,13 @@ class RepositorioSolicitudesEnMemoria:
 
     def __init__(self, solicitudes: list[Solicitud] | None = None):
         self._por_id: dict[UUID, Solicitud] = {s.id: s for s in (solicitudes or [])}
+        # Emula el índice único parcial (empresa_id, gmail_msg_id): las solicitudes
+        # ya ingeridas no se vuelven a crear (idempotencia, CA4).
+        self._gmail_vistos: set[tuple[UUID, str]] = {
+            (s.empresa_id, s.gmail_msg_id)
+            for s in (solicitudes or [])
+            if s.gmail_msg_id
+        }
 
     def por_id(self, solicitud_id: UUID) -> Solicitud | None:
         return self._por_id.get(solicitud_id)
@@ -57,3 +73,29 @@ class RepositorioSolicitudesEnMemoria:
         actualizada = solicitud.model_copy(update={"resumen": resumen, "tipo": tipo})
         self._por_id[solicitud_id] = actualizada
         return actualizada
+
+    async def crear_desde_correo(
+        self, empresa_id: UUID, mensaje: "MensajeCorreo"
+    ) -> bool:
+        """Crea una `solicitud` (`sin_clasificar` / `nueva`) a partir de un correo.
+
+        Devuelve True si la creó, False si el mensaje ya estaba ingerido (mismo
+        `gmail_msg_id` en la misma empresa): así el poller cuenta solo las nuevas.
+        """
+        clave = (empresa_id, mensaje.gmail_msg_id)
+        if clave in self._gmail_vistos:
+            return False
+        self._gmail_vistos.add(clave)
+        solicitud = Solicitud(
+            id=uuid4(),
+            empresa_id=empresa_id,
+            remitente=mensaje.remitente,
+            correo_origen=mensaje.correo_origen,
+            asunto=mensaje.asunto,
+            cuerpo=mensaje.cuerpo,
+            gmail_msg_id=mensaje.gmail_msg_id,
+            tipo="sin_clasificar",
+            estado="nueva",
+        )
+        self._por_id[solicitud.id] = solicitud
+        return True
