@@ -123,8 +123,14 @@ credenciales reales.
     y avanza el cursor; sin cursor usa `after:` y fija el baseline; refresh inválido o
     sin secreto → `ErrorAutenticacionGmail` (CA7). ✅ El cableado del provider
     (`obtener_fabrica_cliente_gmail`) va con TR2 (necesita el `AlmacenSecretos` real).
-- [ ] **TR2 · `AlmacenSecretos` real (Google Secret Manager).** Implementa la interfaz
-  inyectable; en dev/test la impl local en memoria. Test con cliente de GCP mockeado.
+- [x] **TR2 · `AlmacenSecretos` real (Google Secret Manager).** `AlmacenSecretosSecretManager`
+  en `app/servicios/secretos.py`: cada refresh token es un *secret* con una *version*
+  por valor; el `token_ref` persistido es la ruta (`projects/<p>/secrets/<nombre>`),
+  nunca el valor (CA5). Cliente de GCP inyectable (import perezoso del
+  `SecretManagerServiceAsyncClient`); en dev/test la impl en memoria.
+  - Tests (cliente de GCP mockeado, sin red): round-trip guardar→obtener; `guardar`
+    tolera `AlreadyExists` (agrega versión); `obtener` inexistente → `None`; `borrar`
+    elimina e idempotente ante `NotFound`. ✅
 - [ ] **TR3 · Repositorios Supabase.** `service role` para el poller (fija `empresa_id`
   explícito) y repo con **JWT del usuario** para los endpoints (la RLS filtra, no el
   backend). Test de integración contra Supabase local (A no ve lo de B).
