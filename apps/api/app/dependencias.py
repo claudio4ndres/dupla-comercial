@@ -1,9 +1,15 @@
 """Proveedores de dependencias de FastAPI.
 
 En los tests se sobrescriben con dobles (`app.dependency_overrides`). El cableado
-real con Supabase y AsyncAnthropic se hará en una tarea de integración aparte (con
-su propio test); por eso aquí los proveedores reales aún no están implementados.
+real con Supabase aún se hará en tareas de integración aparte (con su propio
+test); por eso esos proveedores siguen como `NotImplementedError`. El cliente
+Anthropic real ya está cableado (T7a): se construye con la key de `Settings`.
 """
+from functools import lru_cache
+
+from anthropic import AsyncAnthropic
+
+from app.config import obtener_settings
 
 
 def obtener_repositorio_solicitudes():
@@ -54,10 +60,14 @@ def obtener_secreto_poller():
     )
 
 
-def obtener_cliente_anthropic():
-    raise NotImplementedError(
-        "Cliente AsyncAnthropic real pendiente; en tests se inyecta un doble."
-    )
+@lru_cache
+def obtener_cliente_anthropic() -> AsyncAnthropic:
+    """Cliente Anthropic real, cableado con la API key de `Settings` (T7a).
+
+    No hace red al construirse. Se cachea para reutilizar el mismo cliente entre
+    requests. En los tests/clasificación se sigue inyectando un doble vía
+    `app.dependency_overrides`, así que nunca se gastan tokens reales (CA5)."""
+    return AsyncAnthropic(api_key=obtener_settings().anthropic_api_key)
 
 
 def obtener_empresa_actual():

@@ -26,9 +26,9 @@ Orden TDD: cada tarea escribe **el test primero (rojo)**, luego el mínimo códi
 
 ## Cableado real (integración) — reemplaza los proveedores `NotImplementedError`
 
-- [ ] **T7a · Settings + cliente Anthropic real.** `app/config.py` (`Settings` con
+- [x] **T7a · Settings + cliente Anthropic real.** `app/config.py` (`Settings` con
   pydantic-settings) + `obtener_cliente_anthropic` → `AsyncAnthropic`.
-  - Test: se construye con la key de settings, **sin llamadas de red**.
+  - Test: se construye con la key de settings, **sin llamadas de red**. ✅
 - [ ] **T7b · Auth `obtener_empresa_actual` (JWT de Supabase).** Verifica el JWT (HS256
   + secreto) y extrae `empresa_id` del claim.
   - Test: JWT válido → `empresa_id`; sin token / firma inválida → `401`.
