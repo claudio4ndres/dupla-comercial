@@ -131,12 +131,26 @@ credenciales reales.
   - Tests (cliente de GCP mockeado, sin red): round-trip guardar→obtener; `guardar`
     tolera `AlreadyExists` (agrega versión); `obtener` inexistente → `None`; `borrar`
     elimina e idempotente ante `NotFound`. ✅
-- [ ] **TR3 · Repositorios Supabase.** `service role` para el poller (fija `empresa_id`
+- [x] **TR3 · Repositorios Supabase.** `service role` para el poller (fija `empresa_id`
   explícito) y repo con **JWT del usuario** para los endpoints (la RLS filtra, no el
   backend). Test de integración contra Supabase local (A no ve lo de B).
-- [ ] **TR4 · Disparo del poller (operacional).** Cloud Scheduler → OIDC sobre
+  - `RepositorioIntegracionesSupabase` (PostgREST) + `ClienteOAuthGoogleReal` (canje del
+    `code`), ambos con tests sin red (transporte httpx mockeado). El repo de solicitudes
+    real ya venía de 001·T7c.
+  - **Cableado de providers** con split de seguridad: `obtener_repositorio_integraciones`
+    (JWT del usuario, RLS) para los endpoints; `obtener_repositorio_integraciones_servicio`
+    y `obtener_repositorio_solicitudes_servicio` (service role) para el **poller** y el
+    **callback OAuth**, que no traen JWT y fijan `empresa_id` explícito.
+    `test_providers_reales.py` cubre el pegamento (JWT vs service role; 401 sin token).
+  - ⏳ El test de integración **en vivo** (A no ve lo de B contra Supabase local) se corre
+    con `supabase start && supabase db reset`; la RLS de `integraciones` ya está verificada
+    por pgTAP en T2. Queda como chequeo operacional (necesita Docker), no unitario.
+- [x] **TR4 · Disparo del poller (operacional).** Cloud Scheduler → OIDC sobre
   `POST /interno/poller/correo` cada ~1–2 min; en dev se dispara a mano. Infra, no
   código de app.
+  - Documentado en `specs/002-conexion-correo/despliegue.md` (job de Scheduler, header
+    `X-Poller-Token` / OIDC, y disparo manual con `curl` en dev). El endpoint y su
+    protección (T12) ya están listos en `app/rutas/interno.py`.
 
 ---
 
