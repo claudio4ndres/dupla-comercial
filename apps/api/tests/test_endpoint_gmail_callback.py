@@ -15,7 +15,7 @@ from app.dependencias import (
     obtener_almacen_secretos,
     obtener_cliente_oauth_google,
     obtener_config_oauth_gmail,
-    obtener_repositorio_integraciones,
+    obtener_repositorio_integraciones_servicio,
 )
 from app.main import app
 from app.repositorios.estado_oauth import AlmacenEstadoOAuthEnMemoria
@@ -37,7 +37,7 @@ def _cliente_http(estado, oauth, secretos, repo):
     app.dependency_overrides[obtener_almacen_estado_oauth] = lambda: estado
     app.dependency_overrides[obtener_cliente_oauth_google] = lambda: oauth
     app.dependency_overrides[obtener_almacen_secretos] = lambda: secretos
-    app.dependency_overrides[obtener_repositorio_integraciones] = lambda: repo
+    app.dependency_overrides[obtener_repositorio_integraciones_servicio] = lambda: repo
     return TestClient(app)
 
 

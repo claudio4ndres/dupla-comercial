@@ -13,7 +13,13 @@ from anthropic import AsyncAnthropic
 from fastapi import Header, HTTPException, status
 
 from app.config import obtener_settings
+from app.repositorios.estado_oauth import AlmacenEstadoOAuthEnMemoria
+from app.repositorios.integraciones_supabase import RepositorioIntegracionesSupabase
 from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
+from app.servicios.gmail_real import FabricaClienteGmailReal
+from app.servicios.oauth_gmail import ConfigOAuthGmail
+from app.servicios.oauth_gmail_real import ClienteOAuthGoogleReal
+from app.servicios.secretos import AlmacenSecretosSecretManager
 
 
 def _jwt_del_header(authorization: str | None) -> str:
@@ -40,46 +46,97 @@ def obtener_repositorio_solicitudes(
     )
 
 
-def obtener_repositorio_integraciones():
-    raise NotImplementedError(
-        "Repositorio real (Supabase) pendiente; en tests se inyecta uno en memoria."
+def obtener_repositorio_integraciones(
+    authorization: str | None = Header(default=None),
+) -> RepositorioIntegracionesSupabase:
+    """Repo de integraciones para ENDPOINTS DE USUARIO (estado/desconectar): se
+    construye POR REQUEST con el JWT del usuario (apikey = anon) para que la RLS
+    filtre por su empresa (regla de oro #2). En tests se sobrescribe en memoria."""
+    settings = obtener_settings()
+    return RepositorioIntegracionesSupabase(
+        settings.supabase_url,
+        settings.supabase_anon_key,
+        _jwt_del_header(authorization),
     )
 
 
-def obtener_almacen_estado_oauth():
-    raise NotImplementedError(
-        "Almacén real (Supabase/Redis) pendiente; en tests se inyecta uno en memoria."
+def obtener_repositorio_integraciones_servicio() -> RepositorioIntegracionesSupabase:
+    """Repo de integraciones para el POLLER y el CALLBACK OAuth, que NO traen JWT (el
+    poller lo dispara Cloud Scheduler; el callback es un redirect del navegador). Corre
+    con la service role key como apikey y bearer: salta la RLS, así que el llamador fija
+    `empresa_id` explícito en cada fila (jamás se infiere → no cruza tenants, TR3)."""
+    settings = obtener_settings()
+    return RepositorioIntegracionesSupabase(
+        settings.supabase_url,
+        settings.supabase_service_role_key,
+        settings.supabase_service_role_key,
     )
 
 
-def obtener_config_oauth_gmail():
-    raise NotImplementedError(
-        "Config OAuth real (Secret Manager) pendiente; en tests se inyecta una dummy."
+def obtener_repositorio_solicitudes_servicio() -> RepositorioSolicitudesSupabase:
+    """Repo de solicitudes para el POLLER (sin JWT): service role como apikey y bearer.
+    El poller fija `empresa_id` explícito por cada correo que ingiere (TR3)."""
+    settings = obtener_settings()
+    return RepositorioSolicitudesSupabase(
+        settings.supabase_url,
+        settings.supabase_service_role_key,
+        settings.supabase_service_role_key,
     )
 
 
-def obtener_cliente_oauth_google():
-    raise NotImplementedError(
-        "Cliente OAuth real (Google) pendiente; en tests se inyecta un doble."
+@lru_cache
+def obtener_almacen_estado_oauth() -> AlmacenEstadoOAuthEnMemoria:
+    """Almacén del `state` anti-CSRF del OAuth. Singleton de proceso (`lru_cache`) para
+    que el `state` creado en `iniciar` siga vivo cuando vuelve el `callback`. En memoria
+    alcanza para un proceso; si se escala a varias instancias, migrar a Supabase/Redis
+    (no cambia el contrato). En tests se sobrescribe."""
+    return AlmacenEstadoOAuthEnMemoria()
+
+
+def obtener_config_oauth_gmail() -> ConfigOAuthGmail:
+    """Config del cliente OAuth de Google (client_id/redirect_uri NO son secretos del
+    usuario). `url_post_conexion` es a dónde vuelve el navegador tras conectar."""
+    settings = obtener_settings()
+    return ConfigOAuthGmail(
+        client_id=settings.google_client_id,
+        redirect_uri=settings.google_redirect_uri,
+        url_post_conexion=settings.frontend_url,
     )
 
 
-def obtener_almacen_secretos():
-    raise NotImplementedError(
-        "Almacén real (Secret Manager) pendiente; en tests se inyecta uno en memoria."
+def obtener_cliente_oauth_google() -> ClienteOAuthGoogleReal:
+    """Cliente real del canje del `code` por credenciales (TR3)."""
+    settings = obtener_settings()
+    return ClienteOAuthGoogleReal(
+        settings.google_client_id,
+        settings.google_client_secret,
+        settings.google_redirect_uri,
     )
 
 
-def obtener_fabrica_cliente_gmail():
-    raise NotImplementedError(
-        "Fábrica real (token→cliente Gmail) pendiente; en tests se inyecta un doble."
+@lru_cache
+def obtener_almacen_secretos() -> AlmacenSecretosSecretManager:
+    """Almacén real de secretos sobre Secret Manager (TR2). Singleton (`lru_cache`)
+    para reusar el cliente de GCP entre requests; se construye sin red (el cliente de
+    GCP es perezoso). En tests se sobrescribe con uno en memoria."""
+    return AlmacenSecretosSecretManager(obtener_settings().gcp_project_id)
+
+
+def obtener_fabrica_cliente_gmail() -> FabricaClienteGmailReal:
+    """Fábrica real (token_ref → cliente Gmail, TR1). Comparte el almacén de secretos
+    singleton para resolver el refresh de cada casilla (regla de oro #3)."""
+    settings = obtener_settings()
+    return FabricaClienteGmailReal(
+        almacen=obtener_almacen_secretos(),
+        client_id=settings.google_client_id,
+        client_secret=settings.google_client_secret,
     )
 
 
-def obtener_secreto_poller():
-    raise NotImplementedError(
-        "Secreto del poller real (Scheduler/OIDC) pendiente; en tests se inyecta uno."
-    )
+def obtener_secreto_poller() -> str:
+    """Secreto compartido que protege el endpoint interno del poller (T12). Cloud
+    Scheduler lo manda en `X-Poller-Token`. En tests se inyecta uno de prueba."""
+    return obtener_settings().poller_token
 
 
 @lru_cache

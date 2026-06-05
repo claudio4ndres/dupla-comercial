@@ -11,8 +11,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.dependencias import (
     obtener_fabrica_cliente_gmail,
-    obtener_repositorio_integraciones,
-    obtener_repositorio_solicitudes,
+    obtener_repositorio_integraciones_servicio,
+    obtener_repositorio_solicitudes_servicio,
     obtener_secreto_poller,
 )
 from app.esquemas import ResumenPoller
@@ -35,8 +35,8 @@ def verificar_credencial_servicio(
 
 @router.post("/poller/correo", response_model=ResumenPoller)
 async def poller_correo(
-    repo_integraciones=Depends(obtener_repositorio_integraciones),
-    repo_solicitudes=Depends(obtener_repositorio_solicitudes),
+    repo_integraciones=Depends(obtener_repositorio_integraciones_servicio),
+    repo_solicitudes=Depends(obtener_repositorio_solicitudes_servicio),
     fabrica_gmail=Depends(obtener_fabrica_cliente_gmail),
     _=Depends(verificar_credencial_servicio),
 ) -> ResumenPoller:

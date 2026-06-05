@@ -37,7 +37,9 @@ from app.dependencias import (
     obtener_empresa_actual,
     obtener_fabrica_cliente_gmail,
     obtener_repositorio_integraciones,
+    obtener_repositorio_integraciones_servicio,
     obtener_repositorio_solicitudes,
+    obtener_repositorio_solicitudes_servicio,
     obtener_secreto_poller,
 )
 from app.main import app
@@ -130,6 +132,14 @@ _config = ConfigOAuthGmail(
 # --- Inyección de dobles sobre la app REAL -----------------------------------
 app.dependency_overrides[obtener_repositorio_integraciones] = lambda: _repo_integraciones
 app.dependency_overrides[obtener_repositorio_solicitudes] = lambda: _repo_solicitudes
+# El callback OAuth y el poller usan el repo de SERVICIO (sin JWT); en la demo apuntan
+# a los mismos dobles en memoria que los endpoints de usuario.
+app.dependency_overrides[obtener_repositorio_integraciones_servicio] = (
+    lambda: _repo_integraciones
+)
+app.dependency_overrides[obtener_repositorio_solicitudes_servicio] = (
+    lambda: _repo_solicitudes
+)
 app.dependency_overrides[obtener_almacen_estado_oauth] = lambda: _almacen_estado
 app.dependency_overrides[obtener_almacen_secretos] = lambda: _almacen_secretos
 app.dependency_overrides[obtener_cliente_oauth_google] = lambda: _oauth

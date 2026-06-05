@@ -42,6 +42,22 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = ""
 
+    # Service role key de Supabase (Settings → API). SÓLO backend/poller: salta la
+    # RLS, por eso el poller fija `empresa_id` explícito en cada fila (TR3). NUNCA
+    # exponer al front.
+    supabase_service_role_key: str = ""
+
+    # Proyecto de Google Cloud donde viven los secretos (Secret Manager, TR2).
+    gcp_project_id: str = ""
+
+    # Secreto compartido que protege el endpoint interno del poller (T12). Cloud
+    # Scheduler lo manda en el header `X-Poller-Token` (en real puede ser OIDC).
+    poller_token: str = ""
+
+    # A dónde vuelve el navegador tras conectar el correo (la bandeja del front);
+    # se usa como `url_post_conexion` del OAuth.
+    frontend_url: str = "/"
+
 
 @lru_cache
 def obtener_settings() -> Settings:

@@ -17,6 +17,7 @@ from app.dependencias import (
     obtener_config_oauth_gmail,
     obtener_empresa_actual,
     obtener_repositorio_integraciones,
+    obtener_repositorio_integraciones_servicio,
 )
 from app.esquemas import EstadoCorreo, UrlConsentimiento
 from app.repositorios.integraciones import Integracion
@@ -70,14 +71,16 @@ async def callback_gmail(
     almacen_estado=Depends(obtener_almacen_estado_oauth),
     oauth=Depends(obtener_cliente_oauth_google),
     secretos=Depends(obtener_almacen_secretos),
-    repo=Depends(obtener_repositorio_integraciones),
+    repo=Depends(obtener_repositorio_integraciones_servicio),
 ) -> RedirectResponse:
     """Cierra el consentimiento: valida el `state` (anti-CSRF), canjea el `code`,
     guarda el refresh token como secreto y persiste la integración conectada; luego
     redirige al front. Los tokens nunca salen en la respuesta (CA5).
 
     La empresa se toma del `state` validado (no del JWT): es el navegador del usuario
-    el que vuelve de Google, y el `state` es lo que liga ese retorno a su empresa.
+    el que vuelve de Google (un redirect, sin header `Authorization`), y el `state` es
+    lo que liga ese retorno a su empresa. Por eso el repo es el de SERVICIO (service
+    role): no hay JWT que active la RLS, así que escribimos con `empresa_id` explícito.
     """
     empresa_id = await almacen_estado.consumir(state)
     if empresa_id is None:

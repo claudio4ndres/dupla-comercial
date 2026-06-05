@@ -12,8 +12,8 @@ from fastapi.testclient import TestClient
 
 from app.dependencias import (
     obtener_fabrica_cliente_gmail,
-    obtener_repositorio_integraciones,
-    obtener_repositorio_solicitudes,
+    obtener_repositorio_integraciones_servicio,
+    obtener_repositorio_solicitudes_servicio,
     obtener_secreto_poller,
 )
 from app.main import app
@@ -60,10 +60,12 @@ def _mensaje(msg_id, **kwargs):
 
 
 def _cliente_http(repo_integraciones, repo_solicitudes, fabrica, *, con_auth=False):
-    app.dependency_overrides[obtener_repositorio_integraciones] = (
+    app.dependency_overrides[obtener_repositorio_integraciones_servicio] = (
         lambda: repo_integraciones
     )
-    app.dependency_overrides[obtener_repositorio_solicitudes] = lambda: repo_solicitudes
+    app.dependency_overrides[obtener_repositorio_solicitudes_servicio] = (
+        lambda: repo_solicitudes
+    )
     app.dependency_overrides[obtener_fabrica_cliente_gmail] = lambda: fabrica
     if con_auth:
         # Probamos la protección REAL: sólo inyectamos el secreto esperado.
