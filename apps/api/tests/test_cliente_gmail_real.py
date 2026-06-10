@@ -194,6 +194,9 @@ async def test_sin_cursor_usa_fallback_y_fija_cursor_desde_profile():
     assert nuevo_cursor == "424242"  # baseline tomado del profile
     lista_req = next(r for r in registro if r.url.path.endswith("/messages"))
     assert lista_req.url.params["q"].startswith("after:")
+    # Excluye el ruido (promos/redes/foros/novedades) → solo el inbox "Primary".
+    assert "-category:promotions" in lista_req.url.params["q"]
+    assert "-category:updates" in lista_req.url.params["q"]
 
 
 # --- Resiliencia del token (CA7): refresh inválido → ErrorAutenticacionGmail --

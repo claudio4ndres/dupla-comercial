@@ -167,7 +167,17 @@ class ClienteGmailReal:
         desde = datetime.now(timezone.utc) - timedelta(days=self._ventana)
         resp = await http.get(
             f"{BASE_GMAIL}/messages",
-            params={"q": f"after:{int(desde.timestamp())}", "maxResults": 50},
+            params={
+                # Excluye el ruido (promos, redes sociales, foros y novedades/banco):
+                # deja el inbox "Primary" (correspondencia real). Una bandeja BTL real no
+                # tiene esa publicidad; esto la simula con un inbox personal de pruebas.
+                "q": (
+                    f"after:{int(desde.timestamp())} "
+                    "-category:promotions -category:social "
+                    "-category:forums -category:updates"
+                ),
+                "maxResults": 50,
+            },
             headers=cabeceras,
         )
         resp.raise_for_status()
