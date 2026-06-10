@@ -386,7 +386,11 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
 
           {pantalla === 'tareas' &&
             (tareas.length ? (
-              <Tareas tareas={tareas} onVolver={() => irA('propuesta')} />
+              <Tareas
+                tareas={tareas}
+                onVolver={() => irA('propuesta')}
+                solicitudId={solicitudActual?.id}
+              />
             ) : (
               <PantallaVacia mensaje="Aún no hay tareas. Genera una propuesta para que el sistema arme sus tareas." />
             ))}

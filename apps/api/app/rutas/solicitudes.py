@@ -3,8 +3,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
+from app.config import obtener_settings
 from app.dependencias import (
     obtener_cliente_anthropic,
+    obtener_cliente_clickup,
     obtener_empresa_actual,
     obtener_repositorio_propuestas,
     obtener_repositorio_solicitudes,
@@ -13,6 +15,7 @@ from app.esquemas import (
     ComponentePropuestaSalida,
     PropuestaDetalle,
     ResultadoClasificacion,
+    ResultadoEnvioClickUp,
     SolicitudListada,
     TareaPropuestaSalida,
 )
@@ -206,3 +209,52 @@ async def descargar_propuesta_ppt(
             )
         },
     )
+
+
+@router.post(
+    "/{solicitud_id}/tareas/clickup", response_model=ResultadoEnvioClickUp
+)
+async def enviar_tareas_a_clickup(
+    solicitud_id: UUID,
+    lista_id: str | None = None,
+    repo=Depends(obtener_repositorio_propuestas),
+    clickup=Depends(obtener_cliente_clickup),
+    settings=Depends(obtener_settings),
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+) -> ResultadoEnvioClickUp:
+    """Crea las tareas de la propuesta como tareas REALES en ClickUp (conector).
+
+    La lista destino la ELIGE el usuario en la UI y llega como query `lista_id`; si no
+    viene, cae a la lista por defecto (`settings.clickup_list_id`, fallback por-empresa).
+    Si no hay ninguna lista → 400 ("elige una lista"). La propuesta se lee SÓLO de la
+    empresa del usuario (RLS); sin propuesta → 404. Si ClickUp cae → 502. Devuelve
+    cuántas tareas se crearon. El token vive sólo en el backend (regla de oro #3)."""
+    lista_destino = lista_id or settings.clickup_list_id
+    if not lista_destino:
+        raise HTTPException(
+            status_code=400,
+            detail="Elige una lista de ClickUp donde crear las tareas",
+        )
+
+    propuesta = await repo.obtener_por_solicitud(solicitud_id, empresa_id)
+    if propuesta is None:
+        raise HTTPException(status_code=404, detail="La solicitud no tiene propuesta")
+
+    try:
+        creadas = 0
+        for tarea in propuesta.tareas:
+            descripcion = (
+                f"{tarea.grupo or ''} · {tarea.responsable or ''} · "
+                f"{tarea.vencimiento or ''}"
+            )
+            await clickup.crear_tarea(
+                lista_destino, tarea.nombre, descripcion=descripcion
+            )
+            creadas += 1
+    except Exception as exc:
+        # ClickUp es un servicio externo: si cae, es un 502 (no un 500 crudo).
+        raise HTTPException(
+            status_code=502, detail="El servicio de ClickUp no está disponible"
+        ) from exc
+
+    return ResultadoEnvioClickUp(creadas=creadas)

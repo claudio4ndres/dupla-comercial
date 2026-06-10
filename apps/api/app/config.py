@@ -73,6 +73,16 @@ class Settings(BaseSettings):
     # backend, que corre desde `apps/api`). Gitignored.
     secretos_ruta_local: str = ".secretos.local.json"
 
+    # Conector ClickUp (por empresa). `clickup_api_token` es el token personal del
+    # usuario; viaja en el header `Authorization: <token>` (CRUDO, sin "Bearer ").
+    # `clickup_list_id` es la lista DESTINO por defecto (fallback) cuando el usuario
+    # no elige una en la UI. Ambos default vacío: sin token, el endpoint de listas
+    # devuelve [] y el front muestra "conecta ClickUp" (el token vive sólo en el
+    # backend, regla de oro #3). Se configuran por entorno: CLICKUP_API_TOKEN /
+    # CLICKUP_LIST_ID.
+    clickup_api_token: str = ""
+    clickup_list_id: str = ""
+
 
 @lru_cache
 def obtener_settings() -> Settings:

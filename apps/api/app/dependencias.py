@@ -19,6 +19,7 @@ from app.repositorios.propuestas_supabase import RepositorioPropuestasSupabase
 from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
 from app.repositorios.tareas_supabase import RepositorioTareasSupabase
 from app.servicios.busqueda_internet import ProveedorBusquedaCurado
+from app.servicios.clickup_real import ClienteClickUp
 from app.servicios.cliente_anthropic import ClienteAnthropicHttpx
 from app.servicios.drive_real import FabricaClienteDriveReal
 from app.servicios.empresa import ResolvedorEmpresaSupabase
@@ -248,6 +249,15 @@ def obtener_proveedor_busqueda() -> ProveedorBusquedaCurado:
     offline-safe. En tests se sobrescribe con un doble vía `app.dependency_overrides`
     (CA4: nunca se llama una API real)."""
     return ProveedorBusquedaCurado()
+
+
+def obtener_cliente_clickup() -> ClienteClickUp:
+    """Cliente del conector ClickUp, construido con el token de `Settings`
+    (`CLICKUP_API_TOKEN`). Sin token (default vacío) el cliente igual se construye:
+    los endpoints detectan que no hay token y caen a `[]` / 400 sin llamar a ClickUp.
+    El token vive sólo en el backend (regla de oro #3). En tests se sobrescribe con un
+    doble vía `app.dependency_overrides` (nunca se llama a ClickUp real)."""
+    return ClienteClickUp(obtener_settings().clickup_api_token)
 
 
 def obtener_resolvedor_empresa() -> ResolvedorEmpresaSupabase:

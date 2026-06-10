@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 
 from app.rutas.catalogo import router as router_catalogo
+from app.rutas.clickup import router as router_clickup
 from app.rutas.conversaciones import router as router_conversaciones
 from app.rutas.integraciones import router as router_integraciones
 from app.rutas.interno import router as router_interno
@@ -17,6 +18,7 @@ app.include_router(router_conversaciones)
 app.include_router(router_catalogo)
 app.include_router(router_propuestas)
 app.include_router(router_tareas)
+app.include_router(router_clickup)
 
 
 @app.get("/salud")

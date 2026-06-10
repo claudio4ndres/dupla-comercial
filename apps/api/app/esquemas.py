@@ -165,3 +165,17 @@ class TareaListada(BaseModel):
     grupo: str | None = None
     responsable: str | None = None
     vencimiento: str | None = None
+
+
+# Una lista de ClickUp para el SELECTOR de destino del conector (GET /clickup/listas).
+# Forma plana: id (para crear la tarea), nombre y espacio (para orientar al usuario).
+class ListaClickUpSalida(BaseModel):
+    id: str
+    nombre: str
+    espacio: str = ""
+
+
+# Resultado de enviar las tareas de la propuesta a ClickUp (POST .../tareas/clickup):
+# cuántas tareas se crearon en la lista elegida.
+class ResultadoEnvioClickUp(BaseModel):
+    creadas: int
