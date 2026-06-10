@@ -7,10 +7,14 @@ interface Props {
   /** Descarga la cotización como .xlsx con el theme Capsulab (007). `vista`:
    * `interno` (costos + margen) o `cliente` (solo precios de venta). */
   onExportarExcel?: (vista: 'interno' | 'cliente') => void
+  /** Descarga la propuesta como un DECK .pptx (cara comercial, vista cliente) — T18. */
+  onExportarPpt?: () => void
 }
 
-export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExcel }: Props) {
+export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExcel, onExportarPpt }: Props) {
   const exportar = onExportarExcel ?? (() => alert('Exportar a Excel'))
+  const exportarPpt =
+    onExportarPpt ?? (() => alert('Exportar propuesta a PPT — se generará la presentación para el cliente'))
   // `valor` es la tarifa/día por unidad: el costo de la línea es cantidad × días × valor.
   const costoTotal = componentes.reduce((acc, c) => acc + costoLinea(c), 0)
   const ventaTotal = valorVenta(costoTotal)
@@ -74,10 +78,7 @@ export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExce
           <button className="btn primary" onClick={onArmarTareas}>
             Armar tareas ▸
           </button>
-          <button
-            className="btn ghost"
-            onClick={() => alert('Exportar propuesta a PPT — se generará la presentación para el cliente')}
-          >
+          <button className="btn ghost" onClick={exportarPpt}>
             ⤓ PPT
           </button>
           <button className="btn ghost" onClick={() => exportar('interno')}>

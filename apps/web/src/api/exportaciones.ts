@@ -42,3 +42,31 @@ export async function descargarCotizacionExcel(
     return false
   }
 }
+
+/**
+ * Descarga la propuesta de una solicitud como un DECK .pptx (cara comercial, vista
+ * cliente: solo precios de venta). Devuelve `true` si la descarga se disparó, `false`
+ * ante error (404 sin propuesta, backend caído) — sin romper la UI.
+ */
+export async function descargarCotizacionPpt(solicitudId: string): Promise<boolean> {
+  try {
+    const r = await fetch(
+      `${API_BASE}/solicitudes/${solicitudId}/propuesta.pptx`,
+      { headers: cabecerasAuth() },
+    )
+    if (!r.ok) throw new Error(`backend respondió ${r.status}`)
+
+    const blob = await r.blob()
+    const url = URL.createObjectURL(blob)
+    const ancla = document.createElement('a')
+    ancla.href = url
+    ancla.download = `cotizacion-${solicitudId}.pptx`
+    document.body.appendChild(ancla)
+    ancla.click()
+    ancla.remove()
+    URL.revokeObjectURL(url)
+    return true
+  } catch {
+    return false
+  }
+}

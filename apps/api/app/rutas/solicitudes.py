@@ -21,10 +21,15 @@ from app.servicios.exportador_excel import (
     LineaCotizacion,
     generar_excel_cotizacion,
 )
+from app.servicios.exportador_ppt import generar_ppt_cotizacion
 
 # Media-type oficial de un .xlsx (OOXML).
 _MEDIA_XLSX = (
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+# Media-type oficial de un .pptx (OOXML).
+_MEDIA_PPTX = (
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 )
 
 router = APIRouter(prefix="/solicitudes", tags=["solicitudes"])
@@ -154,6 +159,48 @@ async def descargar_cotizacion_excel(
         headers={
             "Content-Disposition": (
                 f'attachment; filename="cotizacion-{vista_norm}-{solicitud_id}.xlsx"'
+            )
+        },
+    )
+
+
+@router.get("/{solicitud_id}/propuesta.pptx")
+async def descargar_propuesta_ppt(
+    solicitud_id: UUID,
+    margen: float = 0.40,
+    repo=Depends(obtener_repositorio_propuestas),
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+) -> Response:
+    """Descarga la propuesta como un DECK `.pptx` con el theme Capsulab (T18).
+
+    Es la **cara comercial** (vista cliente): solo precios de venta, sin costos ni
+    margen (mismo criterio que el Excel cliente). Reusa la propuesta persistida
+    (spec 004) — sólo la de la empresa del usuario (RLS). Sin propuesta → 404.
+    `valor_unitario` de cada componente es el COSTO unitario; el `margen` (query
+    param, 0.40 por defecto) se aplica para el precio de venta. `días` no se persiste
+    hoy (va 1)."""
+    propuesta = await repo.obtener_por_solicitud(solicitud_id, empresa_id)
+    if propuesta is None:
+        raise HTTPException(status_code=404, detail="La solicitud no tiene propuesta")
+
+    lineas = [
+        LineaCotizacion(
+            item=c.nombre,
+            descripcion=c.detalle or "",
+            proveedor="",
+            cantidad=c.cantidad,
+            dias=getattr(c, "dias", 1) or 1,
+            valor_unitario=c.valor_unitario,
+        )
+        for c in propuesta.componentes
+    ]
+    contenido = generar_ppt_cotizacion(lineas, titulo="Cotización", margen=margen)
+    return Response(
+        content=contenido,
+        media_type=_MEDIA_PPTX,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="cotizacion-{solicitud_id}.pptx"'
             )
         },
     )
