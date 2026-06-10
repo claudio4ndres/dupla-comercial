@@ -68,6 +68,20 @@ describe('api/clickup · enviarTareasAClickUp', () => {
     expect((opciones.headers as Record<string, string>).Authorization).toBe('Bearer tok123')
   })
 
+  it('manda el mapa de asignados en el cuerpo JSON', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(respuesta({ creadas: 2 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const asignados = { 'Reclutar 6 promotoras': 'Gabriela Lillo' }
+    await enviarTareasAClickUp('sol-7', 'L99', asignados)
+
+    const [, opciones] = fetchMock.mock.calls[0]
+    expect(opciones.method).toBe('POST')
+    // El body es JSON con la clave `asignados` (nombre_de_tarea → persona).
+    expect((opciones.headers as Record<string, string>)['Content-Type']).toContain('application/json')
+    expect(JSON.parse(opciones.body as string)).toEqual({ asignados })
+  })
+
   it('sin lista elegida no agrega lista_id (usa el fallback del backend)', async () => {
     const fetchMock = vi.fn().mockResolvedValue(respuesta({ creadas: 1 }))
     vi.stubGlobal('fetch', fetchMock)

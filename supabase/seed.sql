@@ -190,3 +190,16 @@ insert into catalogo (empresa_id, tipo, nombre, detalle, unidad, valor_unitario,
   ('00000000-0000-0000-0000-0000000000c1', 'caso',
    'Old Spice — Punch Machine', 'Activación interactiva (punch machine) en universidades',
    NULL, NULL, NULL, 'worklist 26.04.23.xlsx');
+
+-- ── Miembros del equipo de Capsulab (roster para el selector "Asignado a") ────
+-- Personas de prueba con su `rol` por área. La pantalla de Tareas las ofrece en un
+-- selector por tarea; el asignado elegido viaja a la descripción de la tarea de
+-- ClickUp (spec 0006). Es para pruebas/demo; el cableado real es fase posterior.
+insert into miembros (empresa_id, nombre, rol) values
+  ('00000000-0000-0000-0000-0000000000c1', 'Gabriela Lillo', 'RRHH'),
+  ('00000000-0000-0000-0000-0000000000c1', 'Bruno Soto', 'Producción'),
+  ('00000000-0000-0000-0000-0000000000c1', 'Carla Díaz', 'Diseño'),
+  ('00000000-0000-0000-0000-0000000000c1', 'Diego Rojas', 'Compras'),
+  ('00000000-0000-0000-0000-0000000000c1', 'Elena Vidal', 'Legal'),
+  ('00000000-0000-0000-0000-0000000000c1', 'Felipe Muñoz', 'Comercial'),
+  ('00000000-0000-0000-0000-0000000000c1', 'Ana Pérez', 'Coordinación');

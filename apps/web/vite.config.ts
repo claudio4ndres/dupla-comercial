@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -45,6 +46,9 @@ export default defineConfig({
     // Vitest 4: opciones top-level (poolOptions fue removido).
     pool: 'threads',
     fileParallelism: false,
+    // Los tests e2e son de Playwright (corren con `playwright.config.ts`, no con
+    // vitest); se excluyen para que vitest no intente levantarlos.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     // isolate: true (default) → cada archivo de test corre con su propio registro de
     // módulos. Necesario porque varios archivos usan `vi.mock('./supabase/cliente')`;
     // con isolate:false los mocks se filtran entre archivos y se rompen entre sí.

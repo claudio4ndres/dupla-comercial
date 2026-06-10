@@ -176,6 +176,67 @@ def test_enviar_crea_una_tarea_por_cada_tarea_de_la_propuesta():
     assert "3 días" in desc_reclutar
 
 
+def test_enviar_usa_el_asignado_del_body_en_la_descripcion():
+    # El front manda `asignados` = {nombre_de_tarea → persona}. Por cada tarea cuyo
+    # nombre esté en el mapa, la descripción lleva esa persona (no el `responsable`).
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    clickup = ClienteClickUpFake()
+    http = _http(clickup=clickup, repo=repo)
+
+    r = http.post(
+        f"/solicitudes/{sol}/tareas/clickup?lista_id=L99",
+        json={"asignados": {"Reclutar 6 promotoras": "Gabriela Lillo"}},
+    )
+
+    assert r.status_code == 200
+    assert r.json() == {"creadas": 2}
+    desc_reclutar = next(c[2] for c in clickup.creadas if c[1] == "Reclutar 6 promotoras")
+    # La persona elegida en el selector viaja en la descripción.
+    assert "Gabriela Lillo" in desc_reclutar
+    # No se filtra el `responsable` original cuando hay un asignado explícito.
+    assert "Coordinación" not in desc_reclutar
+    # Sigue concatenando grupo y vencimiento.
+    assert "RRHH" in desc_reclutar
+    assert "3 días" in desc_reclutar
+
+
+def test_enviar_sin_asignado_para_una_tarea_cae_al_responsable():
+    # Si `asignados` no trae el nombre de una tarea, se mantiene el comportamiento
+    # actual: la descripción usa el `responsable` de la propuesta.
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    clickup = ClienteClickUpFake()
+    http = _http(clickup=clickup, repo=repo)
+
+    # Solo asigna "Comprar insumos"; "Reclutar 6 promotoras" queda sin asignar.
+    r = http.post(
+        f"/solicitudes/{sol}/tareas/clickup?lista_id=L99",
+        json={"asignados": {"Comprar insumos": "Diego Rojas"}},
+    )
+
+    assert r.status_code == 200
+    desc_reclutar = next(c[2] for c in clickup.creadas if c[1] == "Reclutar 6 promotoras")
+    assert "Coordinación" in desc_reclutar  # cae al responsable original
+    desc_comprar = next(c[2] for c in clickup.creadas if c[1] == "Comprar insumos")
+    assert "Diego Rojas" in desc_comprar  # el asignado elegido
+
+
+def test_enviar_sin_body_mantiene_comportamiento_actual():
+    # El body es OPCIONAL: sin él (como hoy), la firma existente sigue funcionando.
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    clickup = ClienteClickUpFake()
+    http = _http(clickup=clickup, repo=repo)
+
+    r = http.post(f"/solicitudes/{sol}/tareas/clickup?lista_id=L99")
+
+    assert r.status_code == 200
+    assert r.json() == {"creadas": 2}
+    desc_reclutar = next(c[2] for c in clickup.creadas if c[1] == "Reclutar 6 promotoras")
+    assert "Coordinación" in desc_reclutar
+
+
 def test_enviar_usa_lista_por_defecto_si_no_viene_query():
     sol = uuid4()
     repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])

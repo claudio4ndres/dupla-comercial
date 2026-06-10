@@ -40,18 +40,25 @@ export async function listarListasClickUp(): Promise<ListaClickUp[]> {
 /**
  * Crea las tareas de la propuesta como tareas reales en ClickUp, en la lista elegida.
  * `listaId` vacío → no se manda y el backend usa su lista por defecto (fallback).
- * Devuelve `{creadas: N}` si todo salió bien, o `null` ante error (sin lista → 400,
- * sin propuesta → 404, ClickUp caído → 502, red caída) — sin romper la UI.
+ * `asignados` (opcional, 0006) es el mapa nombre_de_tarea → persona asignada que el
+ * usuario eligió en el selector de la pantalla de Tareas; viaja en el cuerpo JSON y el
+ * backend lo pone en la descripción de cada tarea. Devuelve `{creadas: N}` si todo
+ * salió bien, o `null` ante error (sin lista → 400, sin propuesta → 404, ClickUp caído
+ * → 502, red caída) — sin romper la UI.
  */
 export async function enviarTareasAClickUp(
   solicitudId: string,
   listaId: string,
+  asignados: Record<string, string> = {},
 ): Promise<{ creadas: number } | null> {
   try {
     const qs = listaId ? `?lista_id=${encodeURIComponent(listaId)}` : ''
     const r = await fetch(`${API_BASE}/solicitudes/${solicitudId}/tareas/clickup${qs}`, {
       method: 'POST',
-      headers: cabecerasAuth(),
+      // Content-Type explícito: mandamos JSON con el mapa de asignaciones (el backend
+      // lo trata como opcional, así que {} es un cuerpo válido = comportamiento actual).
+      headers: { ...cabecerasAuth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ asignados }),
     })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     return (await r.json()) as { creadas: number }

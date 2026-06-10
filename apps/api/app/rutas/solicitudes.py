@@ -13,6 +13,7 @@ from app.dependencias import (
 )
 from app.esquemas import (
     ComponentePropuestaSalida,
+    EnvioClickUpEntrada,
     PropuestaDetalle,
     ResultadoClasificacion,
     ResultadoEnvioClickUp,
@@ -217,6 +218,7 @@ async def descargar_propuesta_ppt(
 async def enviar_tareas_a_clickup(
     solicitud_id: UUID,
     lista_id: str | None = None,
+    entrada: EnvioClickUpEntrada | None = None,
     repo=Depends(obtener_repositorio_propuestas),
     clickup=Depends(obtener_cliente_clickup),
     settings=Depends(obtener_settings),
@@ -228,7 +230,12 @@ async def enviar_tareas_a_clickup(
     viene, cae a la lista por defecto (`settings.clickup_list_id`, fallback por-empresa).
     Si no hay ninguna lista → 400 ("elige una lista"). La propuesta se lee SÓLO de la
     empresa del usuario (RLS); sin propuesta → 404. Si ClickUp cae → 502. Devuelve
-    cuántas tareas se crearon. El token vive sólo en el backend (regla de oro #3)."""
+    cuántas tareas se crearon. El token vive sólo en el backend (regla de oro #3).
+
+    Body OPCIONAL `asignados` (0006): mapa nombre_de_tarea → persona asignada (el roster
+    de `/miembros` que el usuario eligió en el selector de la pantalla de Tareas). Si una
+    tarea está en el mapa, su persona viaja en la descripción de ClickUp; si no, cae a su
+    `responsable` (comportamiento actual). El body es opcional: sin él, todo sigue igual."""
     lista_destino = lista_id or settings.clickup_list_id
     if not lista_destino:
         raise HTTPException(
@@ -240,13 +247,26 @@ async def enviar_tareas_a_clickup(
     if propuesta is None:
         raise HTTPException(status_code=404, detail="La solicitud no tiene propuesta")
 
+    # Mapa de asignaciones que eligió el usuario (vacío si no vino body): nombre → persona.
+    asignados = (entrada.asignados if entrada else None) or {}
+
     try:
         creadas = 0
         for tarea in propuesta.tareas:
-            descripcion = (
-                f"{tarea.grupo or ''} · {tarea.responsable or ''} · "
-                f"{tarea.vencimiento or ''}"
-            )
+            if asignados:
+                # Con asignaciones: la persona elegida (o el responsable si no está en el
+                # mapa) viaja rotulada como "Asignado:" en la descripción de la tarea.
+                descripcion = (
+                    f"{tarea.grupo or ''} · "
+                    f"Asignado: {asignados.get(tarea.nombre) or tarea.responsable or ''} · "
+                    f"{tarea.vencimiento or ''}"
+                )
+            else:
+                # Sin body: comportamiento actual (grupo · responsable · vencimiento).
+                descripcion = (
+                    f"{tarea.grupo or ''} · {tarea.responsable or ''} · "
+                    f"{tarea.vencimiento or ''}"
+                )
             await clickup.crear_tarea(
                 lista_destino, tarea.nombre, descripcion=descripcion
             )

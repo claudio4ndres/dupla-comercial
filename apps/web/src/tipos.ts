@@ -51,6 +51,13 @@ export interface Tarea {
   plazo: string
 }
 
+/** Miembro del roster del equipo (para el selector "Asignado a" de Tareas, 0006). */
+export interface Miembro {
+  id: string
+  nombre: string
+  rol: string // área del miembro: RRHH, Producción, Diseño, Compras, Legal, Comercial…
+}
+
 export interface Empresa {
   nombre: string
   color: string // color de marca (white-label)

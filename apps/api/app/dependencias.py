@@ -15,6 +15,7 @@ from app.repositorios.estado_oauth import AlmacenEstadoOAuthEnMemoria
 from app.repositorios.catalogo_supabase import RepositorioCatalogoSupabase
 from app.repositorios.conversaciones_supabase import RepositorioConversacionesSupabase
 from app.repositorios.integraciones_supabase import RepositorioIntegracionesSupabase
+from app.repositorios.miembros_supabase import RepositorioMiembrosSupabase
 from app.repositorios.propuestas_supabase import RepositorioPropuestasSupabase
 from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
 from app.repositorios.tareas_supabase import RepositorioTareasSupabase
@@ -94,6 +95,20 @@ def obtener_repositorio_tareas(
     vía `app.dependency_overrides`."""
     settings = obtener_settings()
     return RepositorioTareasSupabase(
+        settings.supabase_url,
+        settings.supabase_anon_key,
+        _jwt_del_header(authorization),
+    )
+
+
+def obtener_repositorio_miembros(
+    authorization: str | None = Header(default=None),
+) -> RepositorioMiembrosSupabase:
+    """Repo real de miembros (0006), construido POR REQUEST con el JWT del usuario para
+    que la RLS liste sólo los miembros de su empresa. En tests se sobrescribe con uno en
+    memoria vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    return RepositorioMiembrosSupabase(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),

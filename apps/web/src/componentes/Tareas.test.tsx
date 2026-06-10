@@ -16,20 +16,36 @@ const LISTAS = [
   { id: 'L2', nombre: 'Sampling', espacio: 'Marketing' },
 ]
 
+// Roster de la empresa para el selector "Asignado a" (0006). Hay un miembro por cada
+// área de TAREAS (RRHH, Compras) más otro, para verificar la pre-selección por rol.
+const ROSTER = [
+  { id: 'm1', nombre: 'Gabriela Lillo', rol: 'RRHH' },
+  { id: 'm2', nombre: 'Diego Rojas', rol: 'Compras' },
+  { id: 'm3', nombre: 'Carla Díaz', rol: 'Diseño' },
+]
+
 /** `Response` mínima (sólo ok/status/json). */
 function respuesta(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response
 }
 
-/** Mock de fetch ruteado por URL: listas de ClickUp + envío de tareas. */
-function fetchMockClickUp(opts: { listas?: unknown; creadas?: unknown } = {}) {
-  const { listas = LISTAS, creadas = { creadas: 2 } } = opts
+/** Mock de fetch ruteado por URL: roster + listas de ClickUp + envío de tareas. */
+function fetchMockClickUp(opts: { listas?: unknown; creadas?: unknown; miembros?: unknown } = {}) {
+  const { listas = LISTAS, creadas = { creadas: 2 }, miembros = ROSTER } = opts
   return vi.fn((input: RequestInfo | URL) => {
     const u = String(input)
+    // `/miembros` debe ir ANTES que `/tareas/clickup`: ninguna comparte substring, pero
+    // así queda explícito que el roster es su propia ruta.
+    if (u.includes('/miembros')) return Promise.resolve(respuesta(miembros))
     if (u.includes('/clickup/listas')) return Promise.resolve(respuesta(listas))
     if (u.includes('/tareas/clickup')) return Promise.resolve(respuesta(creadas))
     return Promise.resolve(respuesta({}, false, 404))
   })
+}
+
+/** El selector de lista de ClickUp (distinto de los selectores "Asignado a"). */
+function selectorLista() {
+  return screen.getByRole('combobox', { name: /Lista de ClickUp/i })
 }
 
 describe('Tareas · conector ClickUp', () => {
@@ -62,7 +78,7 @@ describe('Tareas · conector ClickUp', () => {
 
     // Elegir la segunda lista en el selector (espera a que se pueble).
     await screen.findByRole('option', { name: /Sampling/i })
-    await user.selectOptions(screen.getByRole('combobox'), 'L2')
+    await user.selectOptions(selectorLista(), 'L2')
     await user.click(screen.getByRole('button', { name: /Enviar a ClickUp/i }))
 
     // Pegó al endpoint con la lista elegida.
@@ -82,7 +98,7 @@ describe('Tareas · conector ClickUp', () => {
     render(<Tareas tareas={TAREAS} onVolver={noop} solicitudId="sol-1" />)
 
     await screen.findByRole('option', { name: /Sampling/i })
-    await user.selectOptions(screen.getByRole('combobox'), 'L2')
+    await user.selectOptions(selectorLista(), 'L2')
 
     await waitFor(() => {
       expect(Object.values(localStorage).some((v) => v === 'L2')).toBe(true)
@@ -112,5 +128,32 @@ describe('Tareas · conector ClickUp', () => {
     await user.click(screen.getByRole('button', { name: /Enviar a ClickUp/i }))
 
     expect(await screen.findByText(/no se pudo|error/i)).toBeInTheDocument()
+  })
+
+  it('muestra un selector "Asignado a" por tarea, pre-seleccionado por rol', async () => {
+    vi.stubGlobal('fetch', fetchMockClickUp())
+    render(<Tareas tareas={TAREAS} onVolver={noop} solicitudId="sol-1" />)
+    const selRRHH = await screen.findByRole('combobox', {
+      name: /Asignado a · Reclutar 6 promotoras/i,
+    })
+    expect((selRRHH as HTMLSelectElement).value).toBe('Gabriela Lillo') // rol RRHH calza
+    const selCompras = screen.getByRole('combobox', { name: /Asignado a · Comprar insumos/i })
+    expect((selCompras as HTMLSelectElement).value).toBe('Diego Rojas') // rol Compras calza
+  })
+
+  it('manda el asignado elegido en el cuerpo al enviar a ClickUp', async () => {
+    const fetchMock = fetchMockClickUp()
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<Tareas tareas={TAREAS} onVolver={noop} solicitudId="sol-1" />)
+    // Espera a que cargue el roster (aparecen los selectores "Asignado a").
+    await screen.findByRole('combobox', { name: /Asignado a · Reclutar 6 promotoras/i })
+    await user.click(screen.getByRole('button', { name: /Enviar a ClickUp/i }))
+    await waitFor(() => {
+      const llamada = fetchMock.mock.calls.find((c) => String(c[0]).includes('/tareas/clickup'))
+      expect(llamada).toBeTruthy()
+      const body = JSON.parse((llamada![1] as RequestInit).body as string)
+      expect(body.asignados['Reclutar 6 promotoras']).toBe('Gabriela Lillo')
+    })
   })
 })

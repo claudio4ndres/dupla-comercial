@@ -175,7 +175,23 @@ class ListaClickUpSalida(BaseModel):
     espacio: str = ""
 
 
+# Cuerpo OPCIONAL del POST .../tareas/clickup (0006): el mapa de asignaciones que el
+# usuario eligió en la pantalla de Tareas (nombre_de_tarea → persona asignada). Si no
+# trae el nombre de una tarea, ésta cae a su `responsable` (comportamiento actual).
+class EnvioClickUpEntrada(BaseModel):
+    asignados: dict[str, str] | None = None
+
+
 # Resultado de enviar las tareas de la propuesta a ClickUp (POST .../tareas/clickup):
 # cuántas tareas se crearon en la lista elegida.
 class ResultadoEnvioClickUp(BaseModel):
     creadas: int
+
+
+# Un miembro del roster del equipo para el selector "Asignado a" (GET /miembros, 0006).
+# Forma plana en español; NUNCA trae `empresa_id` (CA5). El front pre-selecciona el
+# miembro cuyo `rol` calce con el área de la tarea.
+class MiembroListado(BaseModel):
+    id: str
+    nombre: str
+    rol: str
