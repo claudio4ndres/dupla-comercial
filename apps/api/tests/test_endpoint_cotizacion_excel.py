@@ -52,6 +52,7 @@ def _propuesta(solicitud_id, empresa_id=EMPRESA_A):
                 detalle="6h/día · 3 tiendas",
                 proveedor="ISABEL",
                 cantidad=6,
+                dias=4,
                 valor_unitario=240000,
             ),
             ComponentePropuesta(
@@ -131,6 +132,23 @@ def test_vista_cliente_no_expone_costos():
     assert "COSTO" not in planos
     assert "MARGEN" not in planos
     assert 240000 not in planos
+
+
+def test_dias_del_componente_va_a_la_columna_dias():
+    # El `dias` persistido del componente baja a la columna días (E), no hardcodeado a 1.
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    http = _cliente_http(repo)
+
+    r = http.get(f"/solicitudes/{sol}/cotizacion.xlsx")
+
+    ws = openpyxl.load_workbook(BytesIO(r.content)).active
+    for fila in ws.iter_rows():
+        if fila[0].value == "Promotoras uniformadas":
+            assert fila[4].value == 4  # columna E = días
+            break
+    else:
+        raise AssertionError("no se encontró la fila de Promotoras uniformadas")
 
 
 def test_sin_propuesta_devuelve_404():

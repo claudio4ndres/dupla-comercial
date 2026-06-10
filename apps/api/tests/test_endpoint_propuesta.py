@@ -51,6 +51,7 @@ def _propuesta(solicitud_id, empresa_id=EMPRESA_A):
                 detalle="6h/día × 4 días · 3 tiendas",
                 proveedor="ISABEL",
                 cantidad=6,
+                dias=4,
                 valor_unitario=240000,
             )
         ],
@@ -80,6 +81,7 @@ def test_devuelve_la_propuesta_de_la_solicitud():
     assert cuerpo["componentes"][0]["valor_unitario"] == 240000
     assert cuerpo["componentes"][0]["cantidad"] == 6
     assert cuerpo["componentes"][0]["proveedor"] == "ISABEL"
+    assert cuerpo["componentes"][0]["dias"] == 4
     assert cuerpo["tareas"][0]["grupo"] == "RRHH"
     assert cuerpo["tareas"][0]["vencimiento"] == "3 días"
 

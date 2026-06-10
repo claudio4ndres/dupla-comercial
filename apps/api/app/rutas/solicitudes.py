@@ -140,7 +140,7 @@ async def descargar_cotizacion_excel(
             descripcion=c.detalle or "",
             proveedor=c.proveedor or "",
             cantidad=c.cantidad,
-            dias=1,
+            dias=c.dias,
             valor_unitario=c.valor_unitario,
         )
         for c in propuesta.componentes

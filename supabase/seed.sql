@@ -110,22 +110,26 @@ insert into conversaciones (id, empresa_id, solicitud_id, tipo) values
    '00000000-0000-0000-0000-0000000000c1',
    '00000000-0000-0000-0000-000000000212', 'tipo_1');
 
+-- `total` = costo total (Σ cantidad×días×valor/día). Con el modelo tarifa/día (T17):
+-- 6×4×240000 + 1500×1×1200 + 3×1×380000 + 1×4×90000 + 1×1×450000 = 9.510.000.
 insert into propuestas (id, empresa_id, conversacion_id, total, estado) values
   ('00000000-0000-0000-0000-000000090212',
    '00000000-0000-0000-0000-0000000000c1',
-   '00000000-0000-0000-0000-0000000c0212', 5190000, 'borrador');
+   '00000000-0000-0000-0000-0000000c0212', 9510000, 'borrador');
 
-insert into componentes_propuesta (propuesta_id, nombre, detalle, proveedor, cantidad, valor_unitario) values
+-- `valor_unitario` es la TARIFA POR DÍA por unidad; el costo de la línea es
+-- cantidad × días × valor_unitario (modelo Fuchs, T17).
+insert into componentes_propuesta (propuesta_id, nombre, detalle, proveedor, cantidad, dias, valor_unitario) values
   ('00000000-0000-0000-0000-000000090212',
-   'Promotoras uniformadas', '6h/día × 4 días · 3 tiendas', 'Staff BTL', 6, 240000),
+   'Promotoras uniformadas', '6h/día · 3 tiendas', 'Staff BTL', 6, 4, 240000),
   ('00000000-0000-0000-0000-000000090212',
-   'Muestras 212 VIP Black', 'Sampling 1.5 ml · stock activación', 'Capsulab Lab', 1500, 1200),
+   'Muestras 212 VIP Black', 'Sampling 1.5 ml · stock activación', 'Capsulab Lab', 1500, 1, 1200),
   ('00000000-0000-0000-0000-000000090212',
-   'Módulo de ambientación', 'Gráfica de campaña + mesón · por tienda', 'Taller 3D', 3, 380000),
+   'Módulo de ambientación', 'Gráfica de campaña + mesón · por tienda', 'Taller 3D', 3, 1, 380000),
   ('00000000-0000-0000-0000-000000090212',
-   'Catering equipo', 'Coffee + almuerzo staff · 4 días', 'Muzia', 4, 90000),
+   'Catering equipo', 'Coffee + almuerzo staff', 'Muzia', 1, 4, 90000),
   ('00000000-0000-0000-0000-000000090212',
-   'Coordinación y permisos', 'Logística 3 tiendas + permisos mall', 'Capsulab', 1, 450000);
+   'Coordinación y permisos', 'Logística 3 tiendas + permisos mall', 'Capsulab', 1, 1, 450000);
 
 insert into tareas (empresa_id, propuesta_id, nombre, grupo, responsable, vencimiento) values
   ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-000000090212',

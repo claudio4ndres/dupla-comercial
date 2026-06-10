@@ -19,7 +19,8 @@ class ComponentePropuesta(BaseModel):
     detalle: str | None = None
     proveedor: str | None = None
     cantidad: int = 1
-    valor_unitario: float = 0
+    dias: int = 1
+    valor_unitario: float = 0  # tarifa POR DÍA por unidad (T17); costo = cant×días×valor
 
 
 class TareaPropuesta(BaseModel):
