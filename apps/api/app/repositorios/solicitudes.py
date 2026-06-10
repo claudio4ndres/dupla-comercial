@@ -3,6 +3,7 @@
 La implementación real con Supabase (que respeta la RLS usando el JWT del usuario)
 se hará en una tarea de integración aparte, con su propio test.
 """
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID, uuid4
 
@@ -25,6 +26,10 @@ class Solicitud(BaseModel):
     tipo: str = "sin_clasificar"
     estado: str = "nueva"
     gmail_msg_id: str | None = None
+    # Fecha/hora de recepción (columna `creado_en timestamptz` de la tabla). El doble
+    # en memoria puede dejarla en None; PostgREST la entrega como ISO y pydantic la
+    # parsea. El endpoint la expone al front como `recibido_en`.
+    creado_en: datetime | None = None
 
 
 class RepositorioSolicitudes(Protocol):

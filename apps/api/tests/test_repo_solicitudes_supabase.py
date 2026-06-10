@@ -156,6 +156,25 @@ async def test_listar_manda_jwt_del_usuario_y_mapea_las_filas():
     assert [s.asunto for s in filas] == ["A", "B"]
 
 
+async def test_listar_mapea_creado_en_de_postgrest():
+    # La fila de PostgREST trae `creado_en` (timestamptz como ISO); el repo lo
+    # surte en `Solicitud.creado_en` para que el endpoint lo exponga al front.
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=[
+                {"id": str(uuid4()), "empresa_id": str(EMPRESA), "cuerpo": "uno",
+                 "asunto": "A", "tipo": "sin_clasificar", "estado": "nueva",
+                 "creado_en": "2026-06-09T12:30:00+00:00"},
+            ],
+        )
+
+    filas = await _repo(handler).listar(EMPRESA)
+
+    assert filas[0].creado_en is not None
+    assert filas[0].creado_en.isoformat() == "2026-06-09T12:30:00+00:00"
+
+
 async def test_listar_sin_filas_devuelve_lista_vacia():
     def handler(req):
         return httpx.Response(200, json=[])

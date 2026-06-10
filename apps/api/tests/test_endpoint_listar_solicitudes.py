@@ -8,6 +8,7 @@ del usuario (aislamiento multi-tenant, T4) con la forma canónica en español
 El repositorio y la empresa del usuario se inyectan vía `dependency_overrides` con
 dobles en memoria (CA6: cero llamadas reales).
 """
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -67,6 +68,31 @@ def test_listar_devuelve_las_solicitudes_de_la_empresa():
     assert item["correo_origen"] == "hola@zonaespiga.cl"
     assert "cuerpo" in item
     assert "id" in item
+
+
+def test_listar_expone_la_fecha_de_recepcion_como_iso():
+    # El front pinta la hora de cada correo: el endpoint debe exponer `creado_en`
+    # de la tabla `solicitudes` como `recibido_en` en ISO 8601 (string).
+    creado = datetime(2026, 6, 9, 12, 30, tzinfo=timezone.utc)
+    sol = _solicitud(creado_en=creado)
+    repo = RepositorioSolicitudesEnMemoria([sol])
+    http = _cliente_http(repo)
+
+    item = http.get("/solicitudes").json()[0]
+
+    assert item["recibido_en"] == creado.isoformat()
+
+
+def test_listar_sin_fecha_devuelve_recibido_en_nulo():
+    # Si una fila no trae `creado_en` (p. ej. el doble en memoria), el campo viaja
+    # como null y el front lo deja en blanco; nunca rompe la bandeja.
+    sol = _solicitud()
+    repo = RepositorioSolicitudesEnMemoria([sol])
+    http = _cliente_http(repo)
+
+    item = http.get("/solicitudes").json()[0]
+
+    assert item["recibido_en"] is None
 
 
 def test_listar_solo_devuelve_solicitudes_de_la_empresa_actual():
