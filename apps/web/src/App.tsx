@@ -17,7 +17,7 @@ import {
 } from './api/integraciones'
 import { obtenerSolicitudes } from './api/solicitudes'
 import { obtenerPropuesta } from './api/propuestas'
-import { descargarCotizacionExcel } from './api/exportaciones'
+import { descargarCotizacionExcel, descargarCotizacionPpt } from './api/exportaciones'
 import { obtenerRecursosDrive } from './api/recursos'
 import { obtenerHistorialConversacion } from './api/conversaciones'
 import { supabase } from './supabase/cliente'
@@ -321,6 +321,11 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
               onExportarExcel={
                 solicitudActual
                   ? (vista) => void descargarCotizacionExcel(solicitudActual.id, vista)
+                  : undefined
+              }
+              onExportarPpt={
+                solicitudActual
+                  ? () => void descargarCotizacionPpt(solicitudActual.id)
                   : undefined
               }
             />
