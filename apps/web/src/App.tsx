@@ -207,6 +207,11 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     obtenerHistorialConversacion(sol.id).then((historial) => {
       if (historial.length) setMensajes(historial)
     })
+    // Precarga los componentes de la propuesta existente (T15): si esta solicitud ya
+    // tiene cotización, el panel "Componentes" deja de estar vacío al abrir el chat.
+    obtenerPropuesta(sol.id).then((prop) => {
+      if (prop && prop.componentes.length) setComponentes(prop.componentes)
+    })
   }
 
   async function enviarMensaje(texto: string) {
