@@ -5,6 +5,7 @@ import { Bandeja } from './componentes/Bandeja'
 import { DetalleSolicitud } from './componentes/DetalleSolicitud'
 import { Chat } from './componentes/Chat'
 import { Propuesta } from './componentes/Propuesta'
+import { PropuestasLista } from './componentes/PropuestasLista'
 import { Tareas } from './componentes/Tareas'
 import { Login } from './componentes/Login'
 import { conversarConJavo } from './api/javo'
@@ -16,12 +17,13 @@ import {
   type EstadoCorreo,
 } from './api/integraciones'
 import { obtenerSolicitudes } from './api/solicitudes'
-import { obtenerPropuesta } from './api/propuestas'
+import { listarPropuestas, obtenerPropuesta, type PropuestaResumen } from './api/propuestas'
+import { listarTareas } from './api/tareas'
 import { descargarCotizacionExcel, descargarCotizacionPpt } from './api/exportaciones'
 import { obtenerRecursosDrive } from './api/recursos'
 import { obtenerHistorialConversacion } from './api/conversaciones'
 import { supabase } from './supabase/cliente'
-import { COMPONENTES_T1, EMPRESAS, TAREAS_T1, type RecursoDrive } from './datosMock'
+import { EMPRESAS, type RecursoDrive } from './datosMock'
 import type {
   Componente,
   Empresa,
@@ -79,6 +81,8 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
   const [estadoCorreo, setEstadoCorreo] = useState<EstadoCorreo>(ESTADO_DESCONECTADO)
   // Solicitudes REALES de la empresa (las que el poller ingirió desde el correo).
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([])
+  // Propuestas REALES de la empresa (lista del menú "Propuestas").
+  const [propuestas, setPropuestas] = useState<PropuestaResumen[]>([])
   const [solicitudActual, setSolicitudActual] = useState<Solicitud | null>(null)
   const [tipo, setTipo] = useState<TipoConfirmado>('t1')
   const [mensajes, setMensajes] = useState<Mensaje[]>([])
@@ -143,6 +147,33 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
       activo = false
     }
   }, [empresa, estadoCorreo.estado, pantalla])
+
+  // Carga la lista REAL de propuestas al entrar a la pantalla "Propuestas" del
+  // menú (y al cambiar de empresa). Sin sesión/backend, queda vacía (sin mock).
+  useEffect(() => {
+    if (pantalla !== 'propuestas') return
+    let activo = true
+    listarPropuestas().then((p) => {
+      if (activo) setPropuestas(p)
+    })
+    return () => {
+      activo = false
+    }
+  }, [empresa, pantalla])
+
+  // Carga la lista REAL de tareas al entrar a "Tareas" por el menú SIN tareas en
+  // estado. Si se viene del flujo de una propuesta (tareas ya cargadas), se
+  // respetan esas y no se pisan con la lista global.
+  useEffect(() => {
+    if (pantalla !== 'tareas' || tareas.length > 0) return
+    let activo = true
+    listarTareas().then((t) => {
+      if (activo) setTareas(t)
+    })
+    return () => {
+      activo = false
+    }
+  }, [empresa, pantalla, tareas.length])
 
   function irA(p: Pantalla) {
     setPantalla(p)
@@ -237,21 +268,38 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
   async function generarPropuesta() {
     if (!solicitudActual) return
     // La cotización es REAL: la pide al backend (componentes valorizados + tareas).
-    // Si la solicitud no tiene propuesta (404) o el backend cae, usa el fallback
-    // para que la demo no se rompa.
+    // Sin propuesta (404) o backend caído, deja los datos como están (la pantalla
+    // muestra su estado vacío si no hay componentes).
     const prop = await obtenerPropuesta(solicitudActual.id)
     if (prop) {
       setComponentes(prop.componentes)
       setTareas(prop.tareas)
-    } else {
-      if (componentes.length === 0) setComponentes(COMPONENTES_T1)
-      if (tareas.length === 0) setTareas(TAREAS_T1)
     }
     irA('propuesta')
   }
 
-  // Para navegación directa por el menú, mostramos datos de ejemplo si no hay aún.
-  const componentesPropuesta = componentes.length ? componentes : COMPONENTES_T1
+  // Abre el DETALLE de una propuesta desde la lista del menú. Pide la cotización
+  // real (componentes + tareas) y arma un `solicitudActual` mínimo con los datos
+  // de la fila (id, asunto, remitente) para que los botones de export sigan
+  // funcionando; reutiliza la pantalla `'propuesta'` (la misma del chat).
+  async function abrirPropuestaDesdeLista(solicitudId: string) {
+    const fila = propuestas.find((p) => p.solicitudId === solicitudId)
+    const prop = await obtenerPropuesta(solicitudId)
+    setComponentes(prop ? prop.componentes : [])
+    setTareas(prop ? prop.tareas : [])
+    setSolicitudActual({
+      id: solicitudId,
+      remitente: fila?.remitente ?? '',
+      correo: '',
+      tiempo: '',
+      asunto: fila?.asunto ?? '',
+      tipo: 't1',
+      resumen: '',
+      puntos: [],
+      cuerpo: '',
+    })
+    irA('propuesta')
+  }
 
   // undefined = aún resolviendo la sesión (evita flash al login en recarga).
   if (sesion === undefined) return null
@@ -313,27 +361,35 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
               <PantallaVacia mensaje="Abre una solicitud de la bandeja para conversar con Javo." />
             ))}
 
-          {pantalla === 'propuesta' && (
-            <Propuesta
-              componentes={componentesPropuesta}
-              onVolver={() => irA('chat')}
-              onArmarTareas={() => irA('tareas')}
-              onExportarExcel={
-                solicitudActual
-                  ? (vista) => void descargarCotizacionExcel(solicitudActual.id, vista)
-                  : undefined
-              }
-              onExportarPpt={
-                solicitudActual
-                  ? () => void descargarCotizacionPpt(solicitudActual.id)
-                  : undefined
-              }
-            />
+          {pantalla === 'propuestas' && (
+            <PropuestasLista propuestas={propuestas} onAbrir={abrirPropuestaDesdeLista} />
           )}
 
-          {pantalla === 'tareas' && (
-            <Tareas tareas={tareas.length ? tareas : TAREAS_T1} onVolver={() => irA('propuesta')} />
-          )}
+          {pantalla === 'propuesta' &&
+            (componentes.length ? (
+              <Propuesta
+                componentes={componentes}
+                onVolver={() => irA('chat')}
+                onArmarTareas={() => irA('tareas')}
+                onExportarExcel={
+                  solicitudActual
+                    ? (vista) => void descargarCotizacionExcel(solicitudActual.id, vista)
+                    : undefined
+                }
+                onExportarPpt={
+                  solicitudActual ? () => void descargarCotizacionPpt(solicitudActual.id) : undefined
+                }
+              />
+            ) : (
+              <PantallaVacia mensaje="Abre una solicitud y conversa con Javo para generar su propuesta." />
+            ))}
+
+          {pantalla === 'tareas' &&
+            (tareas.length ? (
+              <Tareas tareas={tareas} onVolver={() => irA('propuesta')} />
+            ) : (
+              <PantallaVacia mensaje="Aún no hay tareas. Genera una propuesta para que el sistema arme sus tareas." />
+            ))}
         </div>
       </div>
     </div>

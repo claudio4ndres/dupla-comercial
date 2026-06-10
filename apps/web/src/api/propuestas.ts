@@ -42,6 +42,37 @@ export interface PropuestaResuelta {
   tareas: Tarea[]
 }
 
+/** Fila de la lista de propuestas (GET /propuestas) tal como la expone el backend. */
+interface PropuestaResumenBackend {
+  id: string
+  solicitud_id: string
+  total: number
+  estado: string
+  asunto: string
+  remitente: string
+}
+
+/** Resumen de una propuesta para la lista del menú (sin componentes ni tareas). */
+export interface PropuestaResumen {
+  id: string
+  solicitudId: string
+  total: number
+  estado: string
+  asunto: string
+  remitente: string
+}
+
+function aPropuestaResumen(p: PropuestaResumenBackend): PropuestaResumen {
+  return {
+    id: p.id,
+    solicitudId: p.solicitud_id,
+    total: p.total,
+    estado: p.estado,
+    asunto: p.asunto,
+    remitente: p.remitente,
+  }
+}
+
 function aComponente(c: ComponenteBackend): Componente {
   return {
     nombre: c.nombre,
@@ -79,5 +110,21 @@ export async function obtenerPropuesta(solicitudId: string): Promise<PropuestaRe
     }
   } catch {
     return null
+  }
+}
+
+/**
+ * Lista las propuestas de la empresa para la pantalla "Propuestas" del menú.
+ * Si el backend no responde (caído o sin sesión), cae a lista vacía para no
+ * romper el demo (mismo manejo de errores que `obtenerSolicitudes`).
+ */
+export async function listarPropuestas(): Promise<PropuestaResumen[]> {
+  try {
+    const r = await fetch(`${API_BASE}/propuestas`, { headers: cabecerasAuth() })
+    if (!r.ok) throw new Error(`backend respondió ${r.status}`)
+    const data = (await r.json()) as PropuestaResumenBackend[]
+    return data.map(aPropuestaResumen)
+  } catch {
+    return []
   }
 }

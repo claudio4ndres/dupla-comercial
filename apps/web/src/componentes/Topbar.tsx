@@ -11,6 +11,7 @@ const NOMBRE_PANTALLA: Record<Pantalla, string> = {
   inbox: 'Bandeja de solicitudes',
   detail: 'Solicitud',
   chat: 'Conversación con Javo',
+  propuestas: 'Propuestas',
   propuesta: 'Propuesta resuelta',
   tareas: 'Tareas generadas',
 }

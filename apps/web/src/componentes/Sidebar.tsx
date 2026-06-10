@@ -33,7 +33,7 @@ const NAV: { id: Pantalla; etiqueta: string; icono: ReactNode }[] = [
     ),
   },
   {
-    id: 'propuesta',
+    id: 'propuestas',
     etiqueta: 'Propuestas',
     icono: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

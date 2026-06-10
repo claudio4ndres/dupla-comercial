@@ -245,6 +245,82 @@ describe('App (arnés)', () => {
     expect(screen.queryByText(/Catering sopaipillas/i)).not.toBeInTheDocument()
   })
 
+  it('desde el menú "Propuestas", lista las propuestas reales y abre el detalle al hacer clic', async () => {
+    const user = userEvent.setup()
+    // El backend entrega la lista (GET /propuestas) y, al abrir una, su detalle
+    // (GET /solicitudes/{id}/propuesta). No hay mock de sopaipillas de por medio.
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      if (u.includes('/solicitudes/s-212/propuesta')) {
+        return Promise.resolve(
+          respuesta({
+            id: 'p-212',
+            total: 5190000,
+            estado: 'borrador',
+            componentes: [
+              { nombre: 'Promotoras uniformadas', detalle: '3 tiendas', cantidad: 6, valor_unitario: 240000 },
+            ],
+            tareas: [],
+          }),
+        )
+      }
+      if (u.includes('/propuestas')) {
+        return Promise.resolve(
+          respuesta([
+            {
+              id: 'p-212',
+              solicitud_id: 's-212',
+              total: 5190000,
+              estado: 'borrador',
+              asunto: 'Cotización activación 212 VIP Black',
+              remitente: 'Carolina Herrera · 212',
+            },
+          ]),
+        )
+      }
+      return Promise.resolve(respuesta(ESTADO_DESCONECTADO))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await entrar(user)
+
+    // Navega a la lista de propuestas desde el menú lateral.
+    await user.click(screen.getByText('Propuestas'))
+    // La fila real del backend aparece (asunto del correo).
+    expect(await screen.findByText(/Cotización activación 212 VIP Black/i)).toBeInTheDocument()
+
+    // Al hacer clic en la fila, abre el detalle: la cotización real del backend.
+    await user.click(screen.getByText(/Cotización activación 212 VIP Black/i))
+    expect(await screen.findByText(/Promotoras uniformadas/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Propuesta resuelta/i })).toBeInTheDocument()
+  })
+
+  it('desde el menú "Tareas", lista las tareas reales del backend (no el mock)', async () => {
+    const user = userEvent.setup()
+    // El backend entrega la lista global de tareas (GET /tareas).
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      if (u.includes('/tareas')) {
+        return Promise.resolve(
+          respuesta([
+            { nombre: 'Reclutar 6 promotoras', grupo: 'RRHH', responsable: 'Coordinación', vencimiento: '3 días' },
+          ]),
+        )
+      }
+      return Promise.resolve(respuesta(ESTADO_DESCONECTADO))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await entrar(user)
+
+    await user.click(screen.getByText('Tareas'))
+    // La tarea real del backend aparece; el mock de sopaipillas ya no existe.
+    expect(await screen.findByText(/Reclutar 6 promotoras/i)).toBeInTheDocument()
+    expect(screen.queryByText(/contratar catering de sopaipillas/i)).not.toBeInTheDocument()
+  })
+
   it('en el chat, Javo propone componentes reales del Drive (con origen) y cita fuentes', async () => {
     const user = userEvent.setup()
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
