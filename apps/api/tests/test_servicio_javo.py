@@ -26,9 +26,9 @@ def _historial_t1():
 def test_responde_con_sonnet_y_system_cacheado():
     # CA1: usa el modelo Sonnet (chat) con el system prompt cacheado y devuelve el texto.
     cliente = ClienteAnthropicTextoFake("Perfecto, dejo catering + 2 promotores...")
-    texto = asyncio.run(responder_javo("t1", _historial_t1(), cliente))
+    resp = asyncio.run(responder_javo("t1", _historial_t1(), cliente))
 
-    assert texto == "Perfecto, dejo catering + 2 promotores..."
+    assert resp.texto == "Perfecto, dejo catering + 2 promotores..."
     llamada = cliente.llamadas[-1]
     assert llamada["model"] == MODELO_CONVERSACION
     assert "sonnet" in MODELO_CONVERSACION  # enrutar por costo: el chat usa Sonnet

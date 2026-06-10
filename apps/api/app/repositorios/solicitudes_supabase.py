@@ -64,6 +64,18 @@ class RepositorioSolicitudesSupabase:
             return None
         return Solicitud(**filas[0])
 
+    async def listar(self, empresa_id: UUID) -> list[Solicitud]:
+        # La RLS ya restringe a la empresa del JWT (regla #2): pedimos todas las
+        # filas visibles. `empresa_id` viaja por la firma del Protocol pero no se
+        # filtra en el backend; la barrera multi-tenant es la RLS, no este código.
+        resp = await self._peticion(
+            "GET",
+            "/solicitudes?select=*",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return [Solicitud(**fila) for fila in resp.json()]
+
     async def guardar_clasificacion(
         self, solicitud_id: UUID, empresa_id: UUID, resumen: str, tipo: str
     ) -> Solicitud:

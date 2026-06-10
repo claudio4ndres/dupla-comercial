@@ -13,6 +13,24 @@ class ResultadoClasificacion(BaseModel):
     tipo: TipoSolicitud
 
 
+class SolicitudListada(BaseModel):
+    """Una solicitud tal como la lista la bandeja del front (GET /solicitudes).
+
+    Forma plana y en español; el front mapea `tipo` (tipo_1/tipo_2/sin_clasificar)
+    a sus códigos de UI (t1/t2/new). NUNCA incluye `empresa_id` ni `token_ref`: al
+    construirla explícitamente, los campos internos quedan fuera (CA5).
+    """
+
+    id: str
+    remitente: str = ""
+    correo_origen: str | None = None
+    asunto: str = ""
+    cuerpo: str = ""
+    resumen: str | None = None
+    tipo: str = "sin_clasificar"
+    estado: str = "nueva"
+
+
 class EstadoCorreo(BaseModel):
     """Estado de la conexión de correo de una empresa, tal como lo consume el front.
 
@@ -64,7 +82,59 @@ class EntradaConversacion(BaseModel):
     solicitud_id: str | None = None
 
 
+class ComponentePropuesto(BaseModel):
+    """Un componente que Javo propone en el chat (005). NO se persiste aquí: el GP lo
+    confirma y, al generar la propuesta, lo toma la spec 004 (CA10)."""
+
+    nombre: str
+    detalle: str | None = None
+    cantidad: int = 1
+    valor_unitario: float | None = None
+    origen: str | None = None  # recurso del Drive de donde salió el valor
+
+
+class Fuente(BaseModel):
+    """Origen citable de un dato que usó Javo: recurso del Drive o resultado web (CA6)."""
+
+    titulo: str
+    referencia: str
+
+
 class RespuestaConversacion(BaseModel):
-    """Respuesta del endpoint: el texto que Javo le muestra al usuario."""
+    """Respuesta del endpoint: el texto de Javo + lo que propuso/citó en este turno.
+
+    `componentes` y `fuentes` van vacíos salvo que Javo haya propuesto componentes o
+    citado fuentes (Drive/internet) durante la conversación.
+    """
 
     texto: str
+    componentes: list[ComponentePropuesto] = []
+    fuentes: list[Fuente] = []
+
+
+# Propuesta / cotización (004) -----------------------------------------------
+# Forma plana que consume el front (GET /solicitudes/{id}/propuesta). NUNCA trae
+# `empresa_id` ni `solicitud_id`: al construirla explícitamente, lo interno queda
+# fuera (CA5). El front mapea valor_unitario→valor, grupo→área, vencimiento→plazo.
+class ComponentePropuestaSalida(BaseModel):
+    nombre: str
+    detalle: str | None = None
+    cantidad: int = 1
+    valor_unitario: float = 0
+
+
+class TareaPropuestaSalida(BaseModel):
+    nombre: str
+    grupo: str | None = None
+    responsable: str | None = None
+    vencimiento: str | None = None
+
+
+class PropuestaDetalle(BaseModel):
+    """La cotización resuelta de una solicitud: componentes valorizados + tareas."""
+
+    id: str
+    total: float = 0
+    estado: str = "borrador"
+    componentes: list[ComponentePropuestaSalida] = []
+    tareas: list[TareaPropuestaSalida] = []

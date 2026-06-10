@@ -33,6 +33,13 @@ export interface Componente {
   detalle: string
   cantidad: number
   valor: number // valor unitario en CLP
+  origen?: string // recurso del Drive de donde salió el valor (005)
+}
+
+/** Origen citable de un dato que usó Javo: recurso del Drive o resultado web (005). */
+export interface Fuente {
+  titulo: string
+  referencia: string
 }
 
 export interface Tarea {

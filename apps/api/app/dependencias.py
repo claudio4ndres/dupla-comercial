@@ -8,18 +8,26 @@ Anthropic real ya está cableado (T7a): se construye con la key de `Settings`.
 from functools import lru_cache
 from uuid import UUID
 
-import jwt
-from anthropic import AsyncAnthropic
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 
 from app.config import obtener_settings
 from app.repositorios.estado_oauth import AlmacenEstadoOAuthEnMemoria
+from app.repositorios.catalogo_supabase import RepositorioCatalogoSupabase
 from app.repositorios.integraciones_supabase import RepositorioIntegracionesSupabase
+from app.repositorios.propuestas_supabase import RepositorioPropuestasSupabase
 from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
+from app.servicios.busqueda_internet import ProveedorBusquedaCurado
+from app.servicios.cliente_anthropic import ClienteAnthropicHttpx
+from app.servicios.empresa import ResolvedorEmpresaSupabase
+from app.servicios.jwt_supabase import VerificadorJwtSupabase
 from app.servicios.gmail_real import FabricaClienteGmailReal
 from app.servicios.oauth_gmail import ConfigOAuthGmail
 from app.servicios.oauth_gmail_real import ClienteOAuthGoogleReal
-from app.servicios.secretos import AlmacenSecretosSecretManager
+from app.servicios.secretos import (
+    AlmacenSecretos,
+    AlmacenSecretosArchivo,
+    AlmacenSecretosSecretManager,
+)
 
 
 def _jwt_del_header(authorization: str | None) -> str:
@@ -40,6 +48,34 @@ def obtener_repositorio_solicitudes(
     con uno en memoria vía `app.dependency_overrides`."""
     settings = obtener_settings()
     return RepositorioSolicitudesSupabase(
+        settings.supabase_url,
+        settings.supabase_anon_key,
+        _jwt_del_header(authorization),
+    )
+
+
+def obtener_repositorio_catalogo(
+    authorization: str | None = Header(default=None),
+) -> RepositorioCatalogoSupabase:
+    """Repo real del catálogo (005), construido POR REQUEST con el JWT del usuario
+    para que la RLS filtre el catálogo por su empresa. En tests se sobrescribe con
+    uno en memoria vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    return RepositorioCatalogoSupabase(
+        settings.supabase_url,
+        settings.supabase_anon_key,
+        _jwt_del_header(authorization),
+    )
+
+
+def obtener_repositorio_propuestas(
+    authorization: str | None = Header(default=None),
+) -> RepositorioPropuestasSupabase:
+    """Repo real de propuestas (004), construido POR REQUEST con el JWT del usuario
+    para que la RLS filtre la cotización por su empresa. En tests se sobrescribe con
+    uno en memoria vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    return RepositorioPropuestasSupabase(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),
@@ -115,11 +151,19 @@ def obtener_cliente_oauth_google() -> ClienteOAuthGoogleReal:
 
 
 @lru_cache
-def obtener_almacen_secretos() -> AlmacenSecretosSecretManager:
-    """Almacén real de secretos sobre Secret Manager (TR2). Singleton (`lru_cache`)
-    para reusar el cliente de GCP entre requests; se construye sin red (el cliente de
-    GCP es perezoso). En tests se sobrescribe con uno en memoria."""
-    return AlmacenSecretosSecretManager(obtener_settings().gcp_project_id)
+def obtener_almacen_secretos() -> AlmacenSecretos:
+    """Almacén de secretos (refresh tokens de Gmail), elegido por `SECRETOS_BACKEND`:
+
+    * `"gcp"` (default, producción) → Google Secret Manager (TR2). Singleton
+      (`lru_cache`) para reusar el cliente de GCP; se construye sin red (perezoso).
+    * `"archivo"` (desarrollo local) → archivo JSON gitignored, sin exigir el
+      paquete `google` ni credenciales de nube; durable entre reinicios.
+
+    En tests se sobrescribe con uno en memoria vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    if settings.secretos_backend.lower() == "archivo":
+        return AlmacenSecretosArchivo(settings.secretos_ruta_local)
+    return AlmacenSecretosSecretManager(settings.gcp_project_id)
 
 
 def obtener_fabrica_cliente_gmail() -> FabricaClienteGmailReal:
@@ -140,25 +184,60 @@ def obtener_secreto_poller() -> str:
 
 
 @lru_cache
-def obtener_cliente_anthropic() -> AsyncAnthropic:
-    """Cliente Anthropic real, cableado con la API key de `Settings` (T7a).
+def obtener_cliente_anthropic() -> ClienteAnthropicHttpx:
+    """Cliente Anthropic real sobre **httpx**, cableado con la API key de `Settings`.
 
     No hace red al construirse. Se cachea para reutilizar el mismo cliente entre
     requests. En los tests/clasificación se sigue inyectando un doble vía
-    `app.dependency_overrides`, así que nunca se gastan tokens reales (CA5)."""
-    return AsyncAnthropic(api_key=obtener_settings().anthropic_api_key)
+    `app.dependency_overrides`, así que nunca se gastan tokens reales (CA5).
+
+    Antes se usaba el SDK `anthropic`, pero su import en frío arrastraba ~1800
+    módulos y tardaba minutos en esta máquina, frenando CADA arranque del backend y
+    el primer llamado a Javo. `ClienteAnthropicHttpx` habla directo con la Messages
+    API por httpx (ya usado en el proyecto): import instantáneo, misma interfaz
+    `.messages.create` que consumen el clasificador y Javo."""
+    return ClienteAnthropicHttpx(api_key=obtener_settings().anthropic_api_key)
 
 
-def obtener_empresa_actual(
+def obtener_proveedor_busqueda() -> ProveedorBusquedaCurado:
+    """Proveedor de búsqueda en internet para Tipo 2 (005). Para la demo: curado y
+    offline-safe. En tests se sobrescribe con un doble vía `app.dependency_overrides`
+    (CA4: nunca se llama una API real)."""
+    return ProveedorBusquedaCurado()
+
+
+def obtener_resolvedor_empresa() -> ResolvedorEmpresaSupabase:
+    """Resolvedor de la empresa de un usuario por su `auth.uid` (login real sin el
+    *custom access token hook*). Usa la service role para leer `usuarios` saltando la
+    RLS. En tests se sobrescribe con un doble vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    return ResolvedorEmpresaSupabase(
+        settings.supabase_url, settings.supabase_service_role_key
+    )
+
+
+def obtener_verificador_jwt() -> VerificadorJwtSupabase:
+    """Verificador del JWT de Supabase: ES256 (vía JWKS) o HS256 (secreto / JWT dev).
+    En tests se sobrescribe con un doble vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    return VerificadorJwtSupabase(settings.supabase_url, settings.supabase_jwt_secret)
+
+
+async def obtener_empresa_actual(
     authorization: str | None = Header(default=None),
+    verificador=Depends(obtener_verificador_jwt),
+    resolvedor=Depends(obtener_resolvedor_empresa),
 ) -> UUID:
-    """Auth real (T7b): saca `empresa_id` del JWT de Supabase del usuario.
+    """Auth real: identifica la empresa del usuario a partir del JWT de Supabase.
 
-    Verifica la firma HS256 con el secreto del proyecto (`SUPABASE_JWT_SECRET`).
-    El `empresa_id` viaja como claim del token (configurado en Supabase con un
-    *custom access token hook*). Cualquier fallo → `401` (no se filtra detalle).
-    La RLS de Postgres es la barrera final multi-tenant; esto solo identifica al
-    usuario para construir su repositorio con su JWT."""
+    Verifica la firma HS256 con `SUPABASE_JWT_SECRET` y resuelve la empresa por dos
+    vías, en orden:
+      1) `empresa_id` en el claim (producción con *custom access token hook*, o el
+         JWT de desarrollo);
+      2) si no viene el claim (login real SIN hook), por el `sub` (auth.uid) contra la
+         tabla `usuarios`.
+    Cualquier fallo → `401` (no se filtra detalle). La RLS de Postgres sigue siendo la
+    barrera final multi-tenant; esto solo identifica al usuario."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -166,26 +245,41 @@ def obtener_empresa_actual(
         )
     token = authorization.split(" ", 1)[1].strip()
     try:
-        claims = jwt.decode(
-            token,
-            obtener_settings().supabase_jwt_secret,
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
-    except jwt.PyJWTError:
+        claims = verificador.verificar(token)
+    except Exception:
+        # Firma inválida, token expirado, JWKS inalcanzable, etc. → 401 sin detalle.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido"
         )
+
+    # 1) empresa_id en el claim (hook activo / JWT dev).
     empresa_id = claims.get("empresa_id")
-    if not empresa_id:
+    if empresa_id:
+        try:
+            return UUID(str(empresa_id))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="empresa_id inválido en el token",
+            )
+
+    # 2) Login real sin hook: resolver por el `sub` contra la tabla usuarios.
+    sub = claims.get("sub")
+    if not sub:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="El token no trae empresa_id",
+            detail="El token no identifica al usuario",
         )
     try:
-        return UUID(str(empresa_id))
+        user_id = UUID(str(sub))
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="empresa_id inválido en el token",
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="sub inválido en el token"
         )
+    empresa = await resolvedor.empresa_de(user_id)
+    if empresa is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El usuario no tiene empresa asignada",
+        )
+    return empresa

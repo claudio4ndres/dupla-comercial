@@ -40,6 +40,8 @@ class RepositorioSolicitudes(Protocol):
         self, empresa_id: UUID, mensaje: "MensajeCorreo"
     ) -> bool: ...
 
+    async def listar(self, empresa_id: UUID) -> list[Solicitud]: ...
+
 
 class RepositorioSolicitudesEnMemoria:
     """Implementación en memoria para tests. Emula el aislamiento por empresa de la
@@ -99,3 +101,11 @@ class RepositorioSolicitudesEnMemoria:
         )
         self._por_id[solicitud.id] = solicitud
         return True
+
+    async def listar(self, empresa_id: UUID) -> list[Solicitud]:
+        """Devuelve las solicitudes de UNA empresa (emula el filtro por RLS).
+
+        Conserva el orden de inserción (las más nuevas al final): el front puede
+        reordenar para mostrar; aquí no inventamos un criterio sin timestamp.
+        """
+        return [s for s in self._por_id.values() if s.empresa_id == empresa_id]

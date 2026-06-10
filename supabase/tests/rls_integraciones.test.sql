@@ -42,9 +42,14 @@ insert into integraciones (empresa_id, proveedor, token_ref, casilla) values
    'secreto://empresa-b', 'b@test.cl');
 
 -- ---- 1 · Como postgres (sin RLS) se ven LAS DOS integraciones ---------
+-- Acotado a las empresas del test (A y B) para ser robusto a datos sembrados
+-- (el seed del demo puede tener integraciones de otras empresas, p. ej. Capsulab).
 select is(
-  (select count(*) from integraciones)::int, 2,
-  'Como superusuario se ven las 2 integraciones (la RLS no aplica a postgres)'
+  (select count(*) from integraciones
+     where empresa_id in (
+       'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+       'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'))::int, 2,
+  'Como superusuario se ven las 2 integraciones del test (la RLS no aplica a postgres)'
 );
 
 -- ---------------------------------------------------------------------

@@ -1,35 +1,64 @@
-// Cliente del chat con Javo.
+// Cliente del chat con Javo (003 + 005).
 //
-// IMPORTANTE (regla de oro #3): el LLM se llama SOLO desde el backend. Aquí NO
-// se toca `api.anthropic.com` ni hay API key: el front habla con nuestro
-// FastAPI, y FastAPI habla con Claude (Sonnet) usando prompt caching.
+// IMPORTANTE (regla de oro #3): el LLM se llama SOLO desde el backend. Aquí NO se
+// toca `api.anthropic.com` ni hay API key: el front habla con nuestro FastAPI, y
+// FastAPI habla con Claude (Sonnet) usando tool-use (Drive + internet).
 //
-// Mientras el endpoint del backend no exista, `conversarConJavo` cae a una
-// respuesta simulada (`respuestaFallback`) para que el demo se vea y funcione.
+// La respuesta de Javo trae el `texto` + los `componentes` que propuso (con su origen
+// del Drive) + las `fuentes` que citó. Si el backend no responde, cae a una respuesta
+// simulada (`respuestaFallback`) para que el demo siga.
 
-import type { Mensaje, TipoConfirmado } from '../tipos'
+import { cabecerasAuth } from './auth'
+import type { Componente, Fuente, Mensaje, TipoConfirmado } from '../tipos'
 
-// Base de la API. En dev se puede apuntar con VITE_API_URL; por defecto el
-// proxy/back en /api.
+// Base de la API. En dev se puede apuntar con VITE_API_URL; por defecto el proxy /api.
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 
-interface RespuestaJavo {
+interface ComponenteBackend {
+  nombre: string
+  detalle: string | null
+  cantidad: number
+  valor_unitario: number | null
+  origen: string | null
+}
+
+interface RespuestaJavoBackend {
   texto: string
+  componentes?: ComponenteBackend[]
+  fuentes?: Fuente[]
+}
+
+/** Respuesta de Javo ya mapeada a los tipos de la UI. */
+export interface RespuestaJavo {
+  texto: string
+  componentes: Componente[]
+  fuentes: Fuente[]
+}
+
+function aComponente(c: ComponenteBackend): Componente {
+  return {
+    nombre: c.nombre,
+    detalle: c.detalle ?? '',
+    cantidad: c.cantidad ?? 1,
+    valor: c.valor_unitario ?? 0,
+    origen: c.origen ?? undefined,
+  }
 }
 
 /**
- * Envía la conversación al backend y devuelve la respuesta de Javo.
- * Si el backend no responde, usa una respuesta simulada (demo offline).
+ * Envía la conversación al backend y devuelve la respuesta de Javo (texto +
+ * componentes propuestos + fuentes). Si el backend cae, usa una respuesta simulada
+ * (demo offline) sin componentes ni fuentes.
  */
 export async function conversarConJavo(params: {
   solicitudId: string
   tipo: TipoConfirmado
   mensajes: Mensaje[]
-}): Promise<string> {
+}): Promise<RespuestaJavo> {
   try {
     const r = await fetch(`${API_BASE}/conversaciones/responder`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...cabecerasAuth() },
       body: JSON.stringify({
         solicitud_id: params.solicitudId,
         tipo: params.tipo,
@@ -40,11 +69,15 @@ export async function conversarConJavo(params: {
       }),
     })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
-    const data = (await r.json()) as RespuestaJavo
-    return data.texto?.trim() || respuestaFallback(params.tipo)
+    const data = (await r.json()) as RespuestaJavoBackend
+    return {
+      texto: data.texto?.trim() || respuestaFallback(params.tipo),
+      componentes: (data.componentes ?? []).map(aComponente),
+      fuentes: data.fuentes ?? [],
+    }
   } catch {
-    // Backend aún no cableado o caído: demo offline.
-    return respuestaFallback(params.tipo)
+    // Backend caído/no cableado: demo offline (sólo texto canned).
+    return { texto: respuestaFallback(params.tipo), componentes: [], fuentes: [] }
   }
 }
 

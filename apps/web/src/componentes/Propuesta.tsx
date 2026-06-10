@@ -4,9 +4,11 @@ interface Props {
   componentes: Componente[]
   onVolver: () => void
   onArmarTareas: () => void
+  /** Descarga la cotización como .xlsx con el theme Capsulab (007). */
+  onExportarExcel?: () => void
 }
 
-export function Propuesta({ componentes, onVolver, onArmarTareas }: Props) {
+export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExcel }: Props) {
   const total = componentes.reduce((acc, c) => acc + c.valor * c.cantidad, 0)
 
   return (
@@ -20,9 +22,6 @@ export function Propuesta({ componentes, onVolver, onArmarTareas }: Props) {
             <h1 className="page">Propuesta resuelta</h1>
             <p className="sub">Componentes definidos en la conversación y valorizados con datos del Drive.</p>
           </div>
-          <button className="btn ghost" onClick={() => alert('Buscando tarifas y costos en Google Drive…')}>
-            ⟳ Buscar en Drive
-          </button>
         </div>
 
         <div className="card">
@@ -66,7 +65,10 @@ export function Propuesta({ componentes, onVolver, onArmarTareas }: Props) {
           >
             ⤓ PPT
           </button>
-          <button className="btn ghost" onClick={() => alert('Exportar a Excel')}>
+          <button
+            className="btn ghost"
+            onClick={onExportarExcel ?? (() => alert('Exportar a Excel'))}
+          >
             ⤓ Excel
           </button>
         </div>

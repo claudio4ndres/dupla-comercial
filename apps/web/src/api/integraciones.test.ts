@@ -32,7 +32,10 @@ describe('api/integraciones', () => {
         estado: 'conectado',
         casilla: 'hola@capsulab.cl',
       })
-      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/integraciones/correo'))
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/integraciones/correo'),
+        expect.objectContaining({ headers: expect.anything() }),
+      )
     })
 
     it('refleja el estado "reconectar" (token caído, CA7)', async () => {

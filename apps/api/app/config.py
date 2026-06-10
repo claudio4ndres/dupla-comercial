@@ -58,6 +58,16 @@ class Settings(BaseSettings):
     # se usa como `url_post_conexion` del OAuth.
     frontend_url: str = "/"
 
+    # Backend del almacén de secretos (refresh tokens de Gmail). "gcp" → Google
+    # Secret Manager (producción, TR2); "archivo" → archivo JSON local gitignored
+    # (desarrollo, sin nube ni paquete `google`). Default seguro hacia prod; el
+    # `.env` local define `SECRETOS_BACKEND=archivo`.
+    secretos_backend: str = "gcp"
+
+    # Ruta del archivo cuando `secretos_backend="archivo"` (relativa al CWD del
+    # backend, que corre desde `apps/api`). Gitignored.
+    secretos_ruta_local: str = ".secretos.local.json"
+
 
 @lru_cache
 def obtener_settings() -> Settings:

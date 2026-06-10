@@ -1,27 +1,33 @@
 import { useState, type FormEvent } from 'react'
+import { supabase } from '../supabase/cliente'
 
 interface Props {
-  /** Se invoca con el correo cuando el usuario inicia sesión. */
+  /** Se invoca con el correo cuando la sesión queda activa. */
   onEntrar: (correo: string) => void
 }
 
-/**
- * Pantalla de inicio de sesión (correo + contraseña).
- *
- * Por ahora es un mock: cualquier credencial entra al demo. Cuando se conecte
- * Supabase Auth, `onEntrar` pasará a llamar a `signInWithPassword` y la sesión
- * traerá el `empresa_id` para las políticas RLS. La contraseña NUNCA viaja a
- * otro lado que no sea el proveedor de Auth.
- */
 export function Login({ onEntrar }: Props) {
   const [correo, setCorreo] = useState('')
   const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [cargando, setCargando] = useState(false)
 
-  const puedeEntrar = correo.trim() !== '' && password.trim() !== ''
+  const puedeEntrar = correo.trim() !== '' && password.trim() !== '' && !cargando
 
-  function enviar(e: FormEvent) {
+  async function enviar(e: FormEvent) {
     e.preventDefault()
     if (!puedeEntrar) return
+    setCargando(true)
+    setError(null)
+    const { error: err } = await supabase.auth.signInWithPassword({
+      email: correo.trim(),
+      password,
+    })
+    setCargando(false)
+    if (err) {
+      setError('Correo o contraseña incorrectos')
+      return
+    }
     onEntrar(correo.trim())
   }
 
@@ -58,14 +64,11 @@ export function Login({ onEntrar }: Props) {
           />
         </label>
 
-        <button type="submit" className="btn primary login-btn" disabled={!puedeEntrar}>
-          Entrar
-        </button>
+        {error && <p className="login-error" role="alert">{error}</p>}
 
-        <p className="login-foot">
-          Demo: aún no conectamos la autenticación real (Supabase Auth). Por ahora cualquier correo y
-          contraseña te dejan entrar.
-        </p>
+        <button type="submit" className="btn primary login-btn" disabled={!puedeEntrar}>
+          {cargando ? 'Entrando…' : 'Entrar'}
+        </button>
       </form>
     </div>
   )

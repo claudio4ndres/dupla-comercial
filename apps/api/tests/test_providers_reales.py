@@ -34,7 +34,10 @@ from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
 from app.servicios.gmail_real import FabricaClienteGmailReal
 from app.servicios.oauth_gmail import ConfigOAuthGmail
 from app.servicios.oauth_gmail_real import ClienteOAuthGoogleReal
-from app.servicios.secretos import AlmacenSecretosSecretManager
+from app.servicios.secretos import (
+    AlmacenSecretosArchivo,
+    AlmacenSecretosSecretManager,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -50,6 +53,10 @@ def _entorno(monkeypatch):
     monkeypatch.setenv("FRONTEND_URL", "https://front/bandeja")
     monkeypatch.setenv("GCP_PROJECT_ID", "proyecto-gcp")
     monkeypatch.setenv("POLLER_TOKEN", "token-del-poller")
+    # Fijamos el backend de secretos por entorno para AISLAR estos tests del `.env`
+    # local (que en desarrollo trae `SECRETOS_BACKEND=archivo`). Por defecto en
+    # producción es "gcp" → Secret Manager; cada test elige su rama explícitamente.
+    monkeypatch.setenv("SECRETOS_BACKEND", "gcp")
     obtener_settings.cache_clear()
     obtener_almacen_secretos.cache_clear()
     obtener_almacen_estado_oauth.cache_clear()
@@ -113,6 +120,20 @@ def test_almacen_secretos_real_es_singleton():
     assert isinstance(a, AlmacenSecretosSecretManager)
     assert a is b  # lru_cache: un solo cliente de GCP por proceso
     assert a._project == "proyecto-gcp"
+
+
+def test_almacen_secretos_archivo_en_desarrollo_local(monkeypatch):
+    # En local (`SECRETOS_BACKEND=archivo`) el provider construye el almacén sobre
+    # archivo JSON: no exige el paquete `google` ni credenciales de nube, y persiste
+    # el refresh token en disco para que el poller lo reuse tras un reinicio.
+    monkeypatch.setenv("SECRETOS_BACKEND", "archivo")
+    monkeypatch.setenv("SECRETOS_RUTA_LOCAL", ".secretos.test.json")
+    obtener_settings.cache_clear()
+    obtener_almacen_secretos.cache_clear()
+
+    almacen = obtener_almacen_secretos()
+    assert isinstance(almacen, AlmacenSecretosArchivo)
+    assert almacen._ruta.name == ".secretos.test.json"
 
 
 def test_fabrica_gmail_real_comparte_el_almacen_de_secretos():

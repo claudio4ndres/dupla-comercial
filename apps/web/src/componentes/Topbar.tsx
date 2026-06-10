@@ -4,6 +4,7 @@ interface Props {
   empresa: Empresa
   pantalla: Pantalla
   onAbrirMenu: () => void
+  onCerrarSesion: () => void
 }
 
 const NOMBRE_PANTALLA: Record<Pantalla, string> = {
@@ -14,7 +15,7 @@ const NOMBRE_PANTALLA: Record<Pantalla, string> = {
   tareas: 'Tareas generadas',
 }
 
-export function Topbar({ empresa, pantalla, onAbrirMenu }: Props) {
+export function Topbar({ empresa, pantalla, onAbrirMenu, onCerrarSesion }: Props) {
   return (
     <div className="topbar">
       <div className="menu-btn" onClick={onAbrirMenu}>
@@ -29,6 +30,14 @@ export function Topbar({ empresa, pantalla, onAbrirMenu }: Props) {
       <span className="pill">
         <span className="led" /> Claude conectado
       </span>
+      <button
+        className="btn ghost"
+        style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+        onClick={onCerrarSesion}
+        title="Cerrar sesión"
+      >
+        Salir
+      </button>
     </div>
   )
 }

@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { fmtCLP, type Componente, type Mensaje, type Solicitud, type TipoConfirmado } from '../tipos'
-import { RECURSOS_DRIVE } from '../datosMock'
+import { fmtCLP, type Componente, type Fuente, type Mensaje, type Solicitud, type TipoConfirmado } from '../tipos'
+import type { RecursoDrive } from '../datosMock'
 
 interface Props {
   solicitud: Solicitud
   tipo: TipoConfirmado
   mensajes: Mensaje[]
   componentes: Componente[]
+  /** Fuentes que Javo citó (recursos del Drive / web) — 005. */
+  fuentes: Fuente[]
+  /** Recursos del Drive de la empresa (reales desde el catálogo). */
+  recursos: RecursoDrive[]
   enviando: boolean
   onEnviar: (texto: string) => void
   onGenerarPropuesta: () => void
@@ -17,7 +21,7 @@ const CHIPS: Record<TipoConfirmado, string[]> = {
   t2: ['Busca opciones en internet 🌐', 'Dame 3 ideas de alto impacto', 'Aterriza la idea ganadora'],
 }
 
-export function Chat({ solicitud, tipo, mensajes, componentes, enviando, onEnviar, onGenerarPropuesta }: Props) {
+export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos, enviando, onEnviar, onGenerarPropuesta }: Props) {
   const [texto, setTexto] = useState('')
   const cajaMensajes = useRef<HTMLDivElement>(null)
   const areaRef = useRef<HTMLTextAreaElement>(null)
@@ -127,6 +131,7 @@ export function Chat({ solicitud, tipo, mensajes, componentes, enviando, onEnvia
                           <div className="nm">{c.nombre}</div>
                           <div className="det">
                             {c.detalle} ×{c.cantidad}
+                            {c.origen ? <span className="origen"> · 📄 {c.origen}</span> : null}
                           </div>
                         </div>
                         <div className="val">{fmtCLP(c.valor * c.cantidad)}</div>
@@ -148,13 +153,33 @@ export function Chat({ solicitud, tipo, mensajes, componentes, enviando, onEnvia
                 <h4>Recursos · Drive</h4>
               </div>
               <div className="pb">
-                {RECURSOS_DRIVE.map((r) => (
-                  <div key={r.nombre} className="drive-file">
-                    <span className="fi">{r.icono}</span> {r.nombre}
-                  </div>
-                ))}
+                {recursos.length === 0 ? (
+                  <div className="empty">Sin recursos indexados en el Drive todavía.</div>
+                ) : (
+                  recursos.map((r) => (
+                    <div key={r.nombre} className="drive-file">
+                      <span className="fi">{r.icono}</span> {r.nombre}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
+
+            {fuentes.length > 0 && (
+              <div className="panel">
+                <div className="ph">
+                  <h4>Fuentes citadas</h4>
+                </div>
+                <div className="pb">
+                  {fuentes.map((f, i) => (
+                    <div key={i} className="drive-file">
+                      <span className="fi">🔗</span> {f.titulo}
+                      <span style={{ color: 'var(--muted)' }}> · {f.referencia}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <button className="btn dark" style={{ justifyContent: 'center' }} onClick={onGenerarPropuesta}>
               Generar propuesta ▸

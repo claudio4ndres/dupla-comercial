@@ -15,15 +15,22 @@ import {
   obtenerEstadoCorreo,
   type EstadoCorreo,
 } from './api/integraciones'
-import { COMPONENTES_T1, EMPRESAS, SOLICITUDES, TAREAS_T1 } from './datosMock'
+import { obtenerSolicitudes } from './api/solicitudes'
+import { obtenerPropuesta } from './api/propuestas'
+import { descargarCotizacionExcel } from './api/exportaciones'
+import { obtenerRecursosDrive } from './api/recursos'
+import { supabase } from './supabase/cliente'
+import { COMPONENTES_T1, EMPRESAS, TAREAS_T1, type RecursoDrive } from './datosMock'
 import type {
   Componente,
   Empresa,
+  Fuente,
   Mensaje,
   Pantalla,
   ProveedorCorreo,
   Sesion,
   Solicitud,
+  Tarea,
   TipoConfirmado,
 } from './tipos'
 
@@ -50,15 +57,37 @@ interface AppProps {
 }
 
 function App({ onNavegar = (url: string) => window.location.assign(url) }: AppProps = {}) {
-  const [sesion, setSesion] = useState<Sesion | null>(null)
+  // Sesión reactiva: null = cargando (undefined), null = sin sesión, Sesion = autenticado.
+  // Usamos undefined para distinguir "aún no sé" de "no hay sesión" y evitar flash del login.
+  const [sesion, setSesion] = useState<Sesion | null | undefined>(undefined)
+
+  useEffect(() => {
+    // Leer sesión inicial desde el almacenamiento del cliente de Supabase.
+    supabase.auth.getSession().then(({ data }) => {
+      setSesion(data.session ? { correo: data.session.user.email ?? '' } : null)
+    })
+    // Suscribirse a cambios (login / logout / refresh de token).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSesion(session ? { correo: session.user.email ?? '' } : null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
   const [empresa, setEmpresa] = useState<Empresa>(EMPRESAS[0])
   const [pantalla, setPantalla] = useState<Pantalla>('inbox')
   // Estado de la bandeja (proveedor + estado) según el backend (null = sin conectar).
   const [estadoCorreo, setEstadoCorreo] = useState<EstadoCorreo>(ESTADO_DESCONECTADO)
+  // Solicitudes REALES de la empresa (las que el poller ingirió desde el correo).
+  const [solicitudes, setSolicitudes] = useState<Solicitud[]>([])
   const [solicitudActual, setSolicitudActual] = useState<Solicitud | null>(null)
   const [tipo, setTipo] = useState<TipoConfirmado>('t1')
   const [mensajes, setMensajes] = useState<Mensaje[]>([])
   const [componentes, setComponentes] = useState<Componente[]>([])
+  // Tareas de la cotización (vienen del backend junto con los componentes).
+  const [tareas, setTareas] = useState<Tarea[]>([])
+  // Fuentes que Javo citó en la conversación (recursos del Drive / web) — 005.
+  const [fuentes, setFuentes] = useState<Fuente[]>([])
+  // Recursos del Drive de la empresa (panel del chat): reales desde el catálogo.
+  const [recursos, setRecursos] = useState<RecursoDrive[]>([])
   const [enviando, setEnviando] = useState(false)
   const [menuAbierto, setMenuAbierto] = useState(false)
 
@@ -81,14 +110,53 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     }
   }, [empresa])
 
+  // Recursos del Drive de la empresa (panel del chat): se leen del catálogo real
+  // (ya no es un mock estático). Por empresa (cada tenant su Drive).
+  useEffect(() => {
+    let activo = true
+    obtenerRecursosDrive().then((r) => {
+      if (activo) setRecursos(r)
+    })
+    return () => {
+      activo = false
+    }
+  }, [empresa])
+
+  // Carga las solicitudes REALES cuando la bandeja está conectada y cada vez que
+  // se vuelve a la pantalla de bandeja (así aparecen los correos que el poller
+  // fue ingiriendo). Sin conexión, la lista queda vacía (ya no hay mock).
+  useEffect(() => {
+    if (estadoCorreo.estado !== 'conectado') {
+      // Sin bandeja conectada no hay solicitudes que mostrar. Limpiar aquí es
+      // sincronizar con el backend (no es estado derivado), de ahí el disable.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSolicitudes([])
+      return
+    }
+    if (pantalla !== 'inbox') return
+    let activo = true
+    obtenerSolicitudes().then((s) => {
+      if (activo) setSolicitudes(s)
+    })
+    return () => {
+      activo = false
+    }
+  }, [empresa, estadoCorreo.estado, pantalla])
+
   function irA(p: Pantalla) {
     setPantalla(p)
     setMenuAbierto(false)
   }
 
   function iniciarSesion(correo: string) {
-    // Mock: cualquier credencial entra. Luego: Supabase Auth + empresa_id (RLS).
-    setSesion({ correo })
+    // onAuthStateChange ya actualizó `sesion`; este callback sólo sirve de
+    // puente para que Login.tsx pueda seguir usando la misma prop `onEntrar`.
+    void correo
+  }
+
+  async function cerrarSesion() {
+    await supabase.auth.signOut()
+    // onAuthStateChange pondrá sesion = null automáticamente.
   }
 
   function cambiarEmpresa(e: Empresa) {
@@ -128,6 +196,8 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     if (!solicitudActual) return
     setTipo(t)
     setComponentes([])
+    setTareas([])
+    setFuentes([])
     setMensajes([{ rol: 'javo', contenido: introJavo(solicitudActual, t) }])
     irA('chat')
   }
@@ -141,23 +211,38 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     setMensajes(nuevos)
     setEnviando(true)
 
-    const respuesta = await conversarConJavo({ solicitudId: solicitudActual.id, tipo, mensajes: nuevos })
-    setMensajes((prev) => [...prev, { rol: 'javo', contenido: respuesta }])
+    const r = await conversarConJavo({ solicitudId: solicitudActual.id, tipo, mensajes: nuevos })
+    setMensajes((prev) => [...prev, { rol: 'javo', contenido: r.texto }])
     setEnviando(false)
 
-    // Demo: cuando Javo ofrece generar la propuesta (Tipo 1), poblamos componentes.
-    if (tipo === 't1' && /propuesta|componentes|cotiza/i.test(respuesta) && componentes.length === 0) {
-      setComponentes(COMPONENTES_T1)
-    }
+    // Javo propone los componentes (con su valor REAL del Drive y su origen) y cita
+    // sus fuentes (005). Pueblan el panel lateral del chat; el GP los confirma y, al
+    // "Generar propuesta", pasan a la cotización (spec 004). No se persisten aquí.
+    if (r.componentes.length) setComponentes(r.componentes)
+    if (r.fuentes.length) setFuentes(r.fuentes)
   }
 
-  function generarPropuesta() {
-    if (componentes.length === 0) setComponentes(COMPONENTES_T1)
+  async function generarPropuesta() {
+    if (!solicitudActual) return
+    // La cotización es REAL: la pide al backend (componentes valorizados + tareas).
+    // Si la solicitud no tiene propuesta (404) o el backend cae, usa el fallback
+    // para que la demo no se rompa.
+    const prop = await obtenerPropuesta(solicitudActual.id)
+    if (prop) {
+      setComponentes(prop.componentes)
+      setTareas(prop.tareas)
+    } else {
+      if (componentes.length === 0) setComponentes(COMPONENTES_T1)
+      if (tareas.length === 0) setTareas(TAREAS_T1)
+    }
     irA('propuesta')
   }
 
   // Para navegación directa por el menú, mostramos datos de ejemplo si no hay aún.
   const componentesPropuesta = componentes.length ? componentes : COMPONENTES_T1
+
+  // undefined = aún resolviendo la sesión (evita flash al login en recarga).
+  if (sesion === undefined) return null
 
   // Sin sesión iniciada, no se entra a la app: primero el login.
   if (!sesion) {
@@ -172,18 +257,18 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
         onCambiarEmpresa={cambiarEmpresa}
         pantalla={pantalla}
         onIrA={irA}
-        conteoBandeja={SOLICITUDES.length}
+        conteoBandeja={solicitudes.length}
         menuAbierto={menuAbierto}
       />
       <div className={'scrim' + (menuAbierto ? ' show' : '')} onClick={() => setMenuAbierto(false)} />
 
       <div className="main">
-        <Topbar empresa={empresa} pantalla={pantalla} onAbrirMenu={() => setMenuAbierto((v) => !v)} />
+        <Topbar empresa={empresa} pantalla={pantalla} onAbrirMenu={() => setMenuAbierto((v) => !v)} onCerrarSesion={cerrarSesion} />
 
         <div className="scroll">
           {pantalla === 'inbox' && (
             <Bandeja
-              solicitudes={SOLICITUDES}
+              solicitudes={solicitudes}
               onAbrir={abrirSolicitud}
               proveedor={estadoCorreo.proveedor}
               estado={estadoCorreo.estado}
@@ -206,6 +291,8 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
                 tipo={tipo}
                 mensajes={mensajes}
                 componentes={componentes}
+                fuentes={fuentes}
+                recursos={recursos}
                 enviando={enviando}
                 onEnviar={enviarMensaje}
                 onGenerarPropuesta={generarPropuesta}
@@ -219,10 +306,15 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
               componentes={componentesPropuesta}
               onVolver={() => irA('chat')}
               onArmarTareas={() => irA('tareas')}
+              onExportarExcel={
+                solicitudActual ? () => void descargarCotizacionExcel(solicitudActual.id) : undefined
+              }
             />
           )}
 
-          {pantalla === 'tareas' && <Tareas tareas={TAREAS_T1} onVolver={() => irA('propuesta')} />}
+          {pantalla === 'tareas' && (
+            <Tareas tareas={tareas.length ? tareas : TAREAS_T1} onVolver={() => irA('propuesta')} />
+          )}
         </div>
       </div>
     </div>

@@ -5,6 +5,8 @@ en tests una versión en memoria. El backend guarda el secreto y persiste sólo 
 `token_ref` (referencia) en la tabla `integraciones`; el token en claro NUNCA sale
 de aquí hacia el front (CA5).
 """
+import json
+from pathlib import Path
 from typing import Protocol
 
 
@@ -31,6 +33,51 @@ class AlmacenSecretosEnMemoria:
 
     async def borrar(self, token_ref: str) -> None:
         self._por_ref.pop(token_ref, None)
+
+
+class AlmacenSecretosArchivo:
+    """Almacén de secretos para DESARROLLO LOCAL: persiste `token_ref -> valor` en un
+    archivo JSON local (gitignored). Reemplaza a Secret Manager cuando no hay nube,
+    sin exigir el paquete `google` ni credenciales de GCP.
+
+    A diferencia del de memoria, SOBREVIVE a reinicios del backend: el refresh token
+    queda en disco, así el poller lo reusa tras un restart. El archivo vive sólo en el
+    backend (regla de oro #3); jamás sale al front. NO usar en producción (allí va
+    `AlmacenSecretosSecretManager`).
+    """
+
+    def __init__(self, ruta: str | Path) -> None:
+        self._ruta = Path(ruta)
+
+    def _leer(self) -> dict[str, str]:
+        if not self._ruta.exists():
+            return {}
+        try:
+            return json.loads(self._ruta.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def _escribir(self, datos: dict[str, str]) -> None:
+        self._ruta.parent.mkdir(parents=True, exist_ok=True)
+        self._ruta.write_text(
+            json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+    async def guardar(self, nombre: str, valor: str) -> str:
+        token_ref = f"secreto://{nombre}"
+        datos = self._leer()
+        datos[token_ref] = valor
+        self._escribir(datos)
+        return token_ref
+
+    async def obtener(self, token_ref: str) -> str | None:
+        # Conveniencia para el poller/uso interno; el front nunca llega hasta aquí.
+        return self._leer().get(token_ref)
+
+    async def borrar(self, token_ref: str) -> None:
+        datos = self._leer()
+        if datos.pop(token_ref, None) is not None:
+            self._escribir(datos)
 
 
 class AlmacenSecretosSecretManager:

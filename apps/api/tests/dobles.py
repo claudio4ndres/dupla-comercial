@@ -1,4 +1,6 @@
 """Dobles de prueba reutilizables (no tocan la red ni gastan tokens)."""
+from types import SimpleNamespace
+
 from app.servicios.gmail import ErrorAutenticacionGmail, MensajeCorreo
 from app.servicios.oauth_gmail import CredencialesGmail
 
@@ -86,6 +88,44 @@ class ClienteAnthropicQueFalla:
         self.messages = _MensajesQueFalla(
             excepcion or RuntimeError("fallo simulado del SDK de Anthropic")
         )
+
+
+# ── Doble "guion" para el loop de tool-use de Javo (005) ─────────────────────
+# Reproduce una SECUENCIA de respuestas: cada llamada a `messages.create` consume
+# la siguiente. Mapea cada respuesta a objetos con `.content` (bloques con `.type`,
+# `.id`, `.name`, `.input`, `.text`) y `.stop_reason`, igual que el cliente real.
+def respuesta_texto(texto: str) -> dict:
+    """Respuesta `end_turn` con un único bloque de texto."""
+    return {"stop_reason": "end_turn", "content": [{"type": "text", "text": texto}]}
+
+
+def respuesta_tool_use(nombre: str, entrada: dict, id: str = "t1") -> dict:
+    """Respuesta `tool_use` con un único bloque de herramienta."""
+    return {
+        "stop_reason": "tool_use",
+        "content": [{"type": "tool_use", "id": id, "name": nombre, "input": entrada}],
+    }
+
+
+class _MensajesGuion:
+    def __init__(self, guion: list[dict], registro: list):
+        self._guion = guion
+        self._registro = registro
+
+    async def create(self, **kwargs):
+        self._registro.append(kwargs)
+        datos = self._guion.pop(0)
+        bloques = [SimpleNamespace(**bloque) for bloque in datos.get("content", [])]
+        return SimpleNamespace(**{**datos, "content": bloques})
+
+
+class ClienteAnthropicGuionFake:
+    """Doble del cliente Anthropic que reproduce un GUION de respuestas (para el loop
+    de tool-use). Registra los payloads en `llamadas` para verificar tools/mensajes."""
+
+    def __init__(self, guion: list[dict]):
+        self.llamadas: list = []
+        self.messages = _MensajesGuion(list(guion), self.llamadas)
 
 
 class ClienteGmailFake:

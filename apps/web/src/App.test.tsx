@@ -1,7 +1,35 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// ── Mock de Supabase ─────────────────────────────────────────────────────────
+// vi.mock se hoistea: el factory NO puede referenciar variables del módulo.
+// Usamos vi.fn() directamente en el factory; los tests ajustan el comportamiento
+// con mockResolvedValue / mockReturnValue en beforeEach.
+vi.mock('./supabase/cliente', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn(),
+      signInWithPassword: vi.fn(),
+      signOut: vi.fn(),
+      onAuthStateChange: vi.fn(),
+    },
+  },
+}))
+
+import { supabase } from './supabase/cliente'
 import App from './App'
+
+// Alias tipado para acceder a los mocks sin castings repetitivos.
+const mockAuth = supabase.auth as {
+  getSession: ReturnType<typeof vi.fn>
+  signInWithPassword: ReturnType<typeof vi.fn>
+  signOut: ReturnType<typeof vi.fn>
+  onAuthStateChange: ReturnType<typeof vi.fn>
+}
+
+// Referencia al callback de onAuthStateChange para dispararlo en los tests.
+let authStateCallback: ((event: string, session: unknown) => void) | null = null
 
 /** `Response` mínima (sólo ok/status/json, que es lo que usa la capa de API). */
 function respuesta(body: unknown, ok = true, status = 200): Response {
@@ -11,15 +39,31 @@ function respuesta(body: unknown, ok = true, status = 200): Response {
 /** Estado de bandeja "sin conectar" que devuelve el backend por defecto. */
 const ESTADO_DESCONECTADO = { proveedor: null, estado: null, casilla: null }
 
-/** Inicia sesión en el demo (por ahora cualquier credencial sirve). */
+/** Inicia sesión en el demo disparando el flujo real de Supabase (mockeado). */
 async function entrar(user: ReturnType<typeof userEvent.setup>) {
+  // Esperar que el login aparezca (App arranca con sesion=undefined, renderiza null
+  // hasta que getSession resuelve, luego muestra el login).
+  await screen.findByLabelText(/correo/i)
   await user.type(screen.getByLabelText(/correo/i), 'javier@capsulab.cl')
-  await user.type(screen.getByLabelText(/contraseña/i), 'secreto123')
+  await user.type(screen.getByLabelText(/contraseña/i), 'capsulab2024')
   await user.click(screen.getByRole('button', { name: /entrar/i }))
+  // Simula que Supabase notifica la sesión activa tras el sign-in.
+  // act() envuelve la actualización de estado para que React la procese.
+  await act(async () => {
+    authStateCallback?.('SIGNED_IN', { user: { email: 'javier@capsulab.cl' } })
+  })
 }
 
 describe('App (arnés)', () => {
   beforeEach(() => {
+    authStateCallback = null
+    mockAuth.getSession.mockResolvedValue({ data: { session: null } })
+    mockAuth.signInWithPassword.mockResolvedValue({ error: null })
+    mockAuth.signOut.mockResolvedValue({})
+    mockAuth.onAuthStateChange.mockImplementation((cb: (event: string, session: unknown) => void) => {
+      authStateCallback = cb
+      return { data: { subscription: { unsubscribe: vi.fn() } } }
+    })
     // Al montar, la bandeja consulta GET /integraciones/correo. Por defecto la
     // dejamos "sin conectar" para que aparezcan los botones de proveedor.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta(ESTADO_DESCONECTADO)))
@@ -30,9 +74,9 @@ describe('App (arnés)', () => {
     vi.restoreAllMocks()
   })
 
-  it('arranca pidiendo iniciar sesión', () => {
+  it('arranca pidiendo iniciar sesión', async () => {
     render(<App />)
-    expect(screen.getByRole('button', { name: /entrar/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /entrar/i })).toBeInTheDocument()
   })
 
   it('tras iniciar sesión, muestra la bandeja de solicitudes', async () => {
@@ -40,6 +84,28 @@ describe('App (arnés)', () => {
     render(<App />)
     await entrar(user)
     expect(screen.getByRole('heading', { name: /Bandeja de solicitudes/i })).toBeInTheDocument()
+  })
+
+  it('mantiene la sesión tras recargar (no rebota al login)', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+    await entrar(user)
+    expect(screen.getByRole('heading', { name: /Bandeja de solicitudes/i })).toBeInTheDocument()
+
+    // Simula un refresh: ahora getSession devuelve sesión activa (como haría el
+    // cliente real de Supabase que persiste la sesión en localStorage).
+    mockAuth.getSession.mockResolvedValueOnce({
+      data: { session: { user: { email: 'javier@capsulab.cl' }, access_token: 'tok' } },
+    })
+    unmount()
+    render(<App />)
+    // Supabase notifica la sesión ya activa al montar.
+    await act(async () => {
+      authStateCallback?.('SIGNED_IN', { user: { email: 'javier@capsulab.cl' } })
+    })
+
+    expect(await screen.findByRole('heading', { name: /Bandeja de solicitudes/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /entrar/i })).not.toBeInTheDocument()
   })
 
   it('muestra la empresa activa (multi-tenant) en la barra lateral', async () => {
@@ -50,13 +116,50 @@ describe('App (arnés)', () => {
     expect(screen.getAllByText(/Capsulab/i).length).toBeGreaterThan(0)
   })
 
-  it('lista las solicitudes entrantes de la bandeja', async () => {
+  it('con la bandeja conectada, lista las solicitudes reales que entrega el backend', async () => {
     const user = userEvent.setup()
+    // Contrato actual: la lista ya NO sale de mocks. Si la bandeja está conectada,
+    // el front pide GET /solicitudes y pinta lo que devuelve el backend (la
+    // empresa real). Mockeamos ambos: estado "conectado" + las solicitudes.
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      if (u.includes('/solicitudes')) {
+        return Promise.resolve(
+          respuesta([
+            {
+              id: 's1',
+              remitente: 'Carolina Herrera',
+              correo_origen: 'eventos@212.cl',
+              asunto: '212 VIP — activación de fragancia',
+              cuerpo: 'Necesitamos cotizar una activación en retail…',
+              resumen: 'Activación 212 VIP en retail',
+              tipo: 'tipo_1',
+              estado: 'nueva',
+            },
+            {
+              id: 's2',
+              remitente: 'Metro de Santiago',
+              correo_origen: 'mkt@metro.cl',
+              asunto: 'Sampling de sopaipillas',
+              cuerpo: 'Queremos un sampling afuera del Metro…',
+              resumen: 'Sampling afuera del Metro',
+              tipo: 'tipo_1',
+              estado: 'nueva',
+            },
+          ]),
+        )
+      }
+      // GET /integraciones/correo → bandeja conectada a Gmail.
+      return Promise.resolve(respuesta({ proveedor: 'gmail', estado: 'conectado', casilla: 'javier@capsulab.cl' }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
     render(<App />)
     await entrar(user)
-    expect(screen.getByText(/Zona Espiga/i)).toBeInTheDocument()
-    expect(screen.getByText(/Fórmula 1 LATAM/i)).toBeInTheDocument()
-    expect(screen.getByText(/Netflix · Narnia/i)).toBeInTheDocument()
+
+    // Las solicitudes del backend aparecen en la bandeja (llegada asíncrona).
+    expect(await screen.findByText(/Carolina Herrera/i)).toBeInTheDocument()
+    expect(screen.getByText(/Metro de Santiago/i)).toBeInTheDocument()
   })
 
   it('en la bandeja, ofrece conectar un proveedor de correo', async () => {
@@ -85,5 +188,115 @@ describe('App (arnés)', () => {
 
     // Navega a la URL EXACTA del backend (no se inventa una URL en el cliente).
     await waitFor(() => expect(navegar).toHaveBeenCalledWith(url))
+  })
+
+  it('al generar la propuesta, muestra la cotización REAL del backend (no el mock)', async () => {
+    const user = userEvent.setup()
+    // Bandeja conectada + una solicitud (212CH) + su propuesta real en el backend.
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      if (u.includes('/propuesta')) {
+        return Promise.resolve(
+          respuesta({
+            id: 'p-212',
+            total: 5190000,
+            estado: 'borrador',
+            componentes: [
+              { nombre: 'Promotoras uniformadas', detalle: '3 tiendas', cantidad: 6, valor_unitario: 240000 },
+            ],
+            tareas: [
+              { nombre: 'Reclutar 6 promotoras', grupo: 'RRHH', responsable: 'Coordinación', vencimiento: '3 días' },
+            ],
+          }),
+        )
+      }
+      if (u.includes('/solicitudes')) {
+        return Promise.resolve(
+          respuesta([
+            {
+              id: 's-212',
+              remitente: 'Carolina Herrera · 212',
+              correo_origen: 'marketing@carolinaherrera.cl',
+              asunto: 'Cotización activación 212 VIP Black',
+              cuerpo: 'Necesitamos cotizar una activación de sampling…',
+              resumen: 'Activación de sampling para 212 VIP Black en 3 tiendas.',
+              tipo: 'tipo_1',
+              estado: 'nueva',
+            },
+          ]),
+        )
+      }
+      // Estado de la bandeja: conectada a Gmail.
+      return Promise.resolve(respuesta({ proveedor: 'gmail', estado: 'conectado', casilla: 'javier@capsulab.cl' }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await entrar(user)
+
+    // Abre la 212CH desde la bandeja → elige Tipo 1 → entra al chat.
+    await user.click(await screen.findByText(/Carolina Herrera/i))
+    await user.click(screen.getByText(/Tipo 1 · Cotización concreta/i))
+    // Genera la propuesta: el front pide la cotización real al backend.
+    await user.click(screen.getByRole('button', { name: /Generar propuesta/i }))
+
+    // La tabla muestra el componente del backend, NO el mock de sopaipillas.
+    expect(await screen.findByText(/Promotoras uniformadas/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Catering sopaipillas/i)).not.toBeInTheDocument()
+  })
+
+  it('en el chat, Javo propone componentes reales del Drive (con origen) y cita fuentes', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      if (u.includes('/conversaciones/responder')) {
+        // Javo respondió usando el catálogo del Drive: trae componentes (con origen) y fuentes.
+        return Promise.resolve(
+          respuesta({
+            texto: 'Las promotoras quedan a $240.000 c/u.',
+            componentes: [
+              {
+                nombre: 'Promotoras uniformadas',
+                detalle: '3 tiendas',
+                cantidad: 6,
+                valor_unitario: 240000,
+                origen: 'Tarifario_promotores_2026.xlsx',
+              },
+            ],
+            fuentes: [{ titulo: 'Caso Red Bull F1', referencia: 'https://ejemplo.cl/f1' }],
+          }),
+        )
+      }
+      if (u.includes('/solicitudes')) {
+        return Promise.resolve(
+          respuesta([
+            {
+              id: 's-212',
+              remitente: 'Carolina Herrera · 212',
+              correo_origen: 'marketing@carolinaherrera.cl',
+              asunto: 'Cotización activación 212 VIP Black',
+              cuerpo: 'Necesitamos cotizar promotoras…',
+              resumen: 'Activación de sampling 212 VIP Black.',
+              tipo: 'tipo_1',
+              estado: 'nueva',
+            },
+          ]),
+        )
+      }
+      return Promise.resolve(respuesta({ proveedor: 'gmail', estado: 'conectado', casilla: 'javier@capsulab.cl' }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await entrar(user)
+    await user.click(await screen.findByText(/Carolina Herrera/i))
+    await user.click(screen.getByText(/Tipo 1 · Cotización concreta/i))
+    // Envía un mensaje (chip) → Javo responde consultando el Drive.
+    await user.click(screen.getByText('Son 3 días de activación'))
+
+    // El panel del chat muestra el componente REAL, su origen del Drive y la fuente citada.
+    expect(await screen.findByText(/Promotoras uniformadas/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/Tarifario_promotores_2026/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Caso Red Bull F1/i)).toBeInTheDocument()
   })
 })

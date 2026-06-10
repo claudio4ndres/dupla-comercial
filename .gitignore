@@ -17,6 +17,10 @@ dist/
 .env
 .env.*
 !.env.example
+# Almacén de secretos de DESARROLLO LOCAL (refresh tokens de Gmail). Solo backend,
+# jamás al repo ni al front (regla de oro #3).
+.secretos.local.json
+apps/api/.secretos.local.json
 
 # Supabase local
 supabase/.branches/

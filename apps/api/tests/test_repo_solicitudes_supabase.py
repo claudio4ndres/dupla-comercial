@@ -132,6 +132,37 @@ async def test_crear_desde_correo_duplicado_devuelve_false():
     assert creada is False
 
 
+async def test_listar_manda_jwt_del_usuario_y_mapea_las_filas():
+    visto = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        visto["auth"] = req.headers.get("authorization")
+        visto["url"] = str(req.url)
+        return httpx.Response(
+            200,
+            json=[
+                {"id": str(uuid4()), "empresa_id": str(EMPRESA), "cuerpo": "uno",
+                 "asunto": "A", "tipo": "sin_clasificar", "estado": "nueva"},
+                {"id": str(uuid4()), "empresa_id": str(EMPRESA), "cuerpo": "dos",
+                 "asunto": "B", "tipo": "tipo_2", "estado": "nueva"},
+            ],
+        )
+
+    filas = await _repo(handler).listar(EMPRESA)
+
+    # El JWT del usuario en el header es lo que hace que la RLS filtre por SU empresa.
+    assert visto["auth"] == f"Bearer {JWT}"
+    assert "/rest/v1/solicitudes" in visto["url"]
+    assert [s.asunto for s in filas] == ["A", "B"]
+
+
+async def test_listar_sin_filas_devuelve_lista_vacia():
+    def handler(req):
+        return httpx.Response(200, json=[])
+
+    assert await _repo(handler).listar(EMPRESA) == []
+
+
 def test_provider_construye_repo_con_el_jwt_del_usuario(monkeypatch):
     # El pegamento de FastAPI: arma el repo real por request con el JWT del header.
     monkeypatch.setenv("SUPABASE_URL", "https://proyecto.supabase.co")
