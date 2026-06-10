@@ -50,12 +50,14 @@ insert into usuarios (id, empresa_id, correo) values
 
 -- ── Bandeja conectada (Gmail) ─────────────────────────────────────────
 -- Deja la bandeja en estado "conectado" para la demo, sin pasar por el OAuth en
--- vivo (frágil en escenario). El `token_ref` es un placeholder: en producción es
--- la referencia al refresh token en el almacén de secretos; aquí no se usa porque
--- la demo no refresca tokens ni desconecta.
+-- vivo (frágil en escenario). El `token_ref` apunta al refresh token REAL en el
+-- almacén de secretos local (.secretos.local.json, gitignored): así el poller puede
+-- ingerir Gmail real en esta máquina. En otra sin ese secreto, el poller ingiere 0
+-- sin romperse (quedan solo las solicitudes sembradas).
 insert into integraciones (empresa_id, proveedor, token_ref, casilla, estado) values
   ('00000000-0000-0000-0000-0000000000c1',
-   'gmail', 'demo-capsulab-gmail', 'javier@capsulab.cl', 'conectado');
+   'gmail', 'secreto://gmail-refresh-00000000-0000-0000-0000-0000000000c1',
+   'javier@capsulab.cl', 'conectado');
 
 -- ── Solicitudes (correos ya ingeridos y clasificados) ─────────────────
 -- La 212CH es el correo protagonista de la demo (Tipo 1: cotización concreta).
