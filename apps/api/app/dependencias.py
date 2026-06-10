@@ -13,6 +13,7 @@ from fastapi import Depends, Header, HTTPException, status
 from app.config import obtener_settings
 from app.repositorios.estado_oauth import AlmacenEstadoOAuthEnMemoria
 from app.repositorios.catalogo_supabase import RepositorioCatalogoSupabase
+from app.repositorios.conversaciones_supabase import RepositorioConversacionesSupabase
 from app.repositorios.integraciones_supabase import RepositorioIntegracionesSupabase
 from app.repositorios.propuestas_supabase import RepositorioPropuestasSupabase
 from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
@@ -76,6 +77,20 @@ def obtener_repositorio_propuestas(
     uno en memoria vía `app.dependency_overrides`."""
     settings = obtener_settings()
     return RepositorioPropuestasSupabase(
+        settings.supabase_url,
+        settings.supabase_anon_key,
+        _jwt_del_header(authorization),
+    )
+
+
+def obtener_repositorio_conversaciones(
+    authorization: str | None = Header(default=None),
+) -> RepositorioConversacionesSupabase:
+    """Repo real de conversaciones (T13), construido POR REQUEST con el JWT del usuario
+    para que la RLS filtre el hilo del chat por su empresa. En tests se sobrescribe con
+    uno en memoria vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    return RepositorioConversacionesSupabase(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),

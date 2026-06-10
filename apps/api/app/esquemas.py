@@ -73,8 +73,9 @@ class MensajeConversacion(BaseModel):
 class EntradaConversacion(BaseModel):
     """Cuerpo de `POST /conversaciones/responder`: el tipo confirmado y el historial.
 
-    `solicitud_id` viaja para trazabilidad/futuro (persistencia), pero el endpoint
-    es sin estado: hoy no lee ni escribe datos de empresa.
+    Si viene `solicitud_id` (UUID real), el endpoint PERSISTE el turno nuevo del
+    usuario + la respuesta de Javo en el hilo de esa solicitud (T13). Si falta o no es
+    un UUID (p.ej. el `demo-1` de la demo sin estado), responde igual pero no persiste.
     """
 
     tipo: TipoConversacion
