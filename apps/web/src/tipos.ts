@@ -32,7 +32,8 @@ export interface Componente {
   nombre: string
   detalle: string
   cantidad: number
-  valor: number // valor unitario en CLP
+  valor: number // TARIFA POR DÍA por unidad en CLP (modelo Fuchs, T17)
+  dias?: number // días de la partida; costo = cantidad × días × valor (default 1)
   origen?: string // recurso del Drive de donde salió el valor (005)
   proveedor?: string // quién provee la partida (catering, promotores…) — Excel (007)
 }
@@ -107,3 +108,13 @@ export const NOMBRE_PROVEEDOR: Record<ProveedorCorreo, string> = {
 
 /** Formatea un monto en pesos chilenos. */
 export const fmtCLP = (n: number): string => '$' + n.toLocaleString('es-CL')
+
+// --- Precios de la cotización (T16/T17) -------------------------------------
+// `valor` de cada componente es el COSTO (tarifa por día por unidad). El costo de la
+// línea es cantidad × días × valor. El precio de VENTA aplica el margen por defecto.
+/** Margen de venta por defecto (40%): VALOR VENTA = costo / (1 − margen). */
+export const MARGEN_VENTA = 0.4
+/** Costo de una línea: cantidad × días × tarifa/día (días = 1 si no viene). */
+export const costoLinea = (c: Componente): number => c.cantidad * (c.dias ?? 1) * c.valor
+/** Precio de venta a partir del costo, con el margen por defecto. */
+export const valorVenta = (costo: number): number => Math.round(costo / (1 - MARGEN_VENTA))

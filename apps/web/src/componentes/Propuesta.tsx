@@ -1,4 +1,4 @@
-import { fmtCLP, type Componente } from '../tipos'
+import { costoLinea, fmtCLP, MARGEN_VENTA, valorVenta, type Componente } from '../tipos'
 
 interface Props {
   componentes: Componente[]
@@ -11,7 +11,9 @@ interface Props {
 
 export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExcel }: Props) {
   const exportar = onExportarExcel ?? (() => alert('Exportar a Excel'))
-  const total = componentes.reduce((acc, c) => acc + c.valor * c.cantidad, 0)
+  // `valor` es la tarifa/día por unidad: el costo de la línea es cantidad × días × valor.
+  const costoTotal = componentes.reduce((acc, c) => acc + costoLinea(c), 0)
+  const ventaTotal = valorVenta(costoTotal)
 
   return (
     <section className="screen">
@@ -33,8 +35,9 @@ export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExce
                 <th>Componente</th>
                 <th>Detalle</th>
                 <th style={{ textAlign: 'right' }}>Cant.</th>
-                <th style={{ textAlign: 'right' }}>Valor unit.</th>
-                <th style={{ textAlign: 'right' }}>Subtotal</th>
+                <th style={{ textAlign: 'right' }}>Días</th>
+                <th style={{ textAlign: 'right' }}>Valor/día</th>
+                <th style={{ textAlign: 'right' }}>Costo</th>
               </tr>
             </thead>
             <tbody>
@@ -48,13 +51,20 @@ export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExce
                   </td>
                   <td style={{ color: 'var(--muted)' }}>{c.detalle}</td>
                   <td className="num">{c.cantidad}</td>
+                  <td className="num">{c.dias ?? 1}</td>
                   <td className="num">{fmtCLP(c.valor)}</td>
-                  <td className="num">{fmtCLP(c.valor * c.cantidad)}</td>
+                  <td className="num">{fmtCLP(costoLinea(c))}</td>
                 </tr>
               ))}
               <tr className="total-row">
-                <td colSpan={4}>Total propuesta</td>
-                <td className="num">{fmtCLP(total)}</td>
+                <td colSpan={5}>Costo total</td>
+                <td className="num">{fmtCLP(costoTotal)}</td>
+              </tr>
+              <tr className="total-row">
+                <td colSpan={5}>Valor venta · margen {Math.round(MARGEN_VENTA * 100)}%</td>
+                <td className="num" style={{ color: 'var(--brand)' }}>
+                  {fmtCLP(ventaTotal)}
+                </td>
               </tr>
             </tbody>
           </table>

@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { fmtCLP, type Componente, type Fuente, type Mensaje, type Solicitud, type TipoConfirmado } from '../tipos'
+import {
+  costoLinea,
+  fmtCLP,
+  valorVenta,
+  type Componente,
+  type Fuente,
+  type Mensaje,
+  type Solicitud,
+  type TipoConfirmado,
+} from '../tipos'
 import type { RecursoDrive } from '../datosMock'
 
 interface Props {
@@ -47,7 +56,7 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
     }
   }
 
-  const total = componentes.reduce((acc, c) => acc + c.valor * c.cantidad, 0)
+  const costoTotal = componentes.reduce((acc, c) => acc + costoLinea(c), 0)
 
   return (
     <section className="screen">
@@ -131,16 +140,21 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
                           <div className="nm">{c.nombre}</div>
                           <div className="det">
                             {c.detalle} ×{c.cantidad}
+                            {(c.dias ?? 1) > 1 ? ` · ${c.dias} días` : ''}
                             {c.origen ? <span className="origen"> · 📄 {c.origen}</span> : null}
                           </div>
                         </div>
-                        <div className="val">{fmtCLP(c.valor * c.cantidad)}</div>
+                        <div className="val">{fmtCLP(costoLinea(c))}</div>
                       </div>
                     ))}
                     <div className="comp-row" style={{ marginTop: 6 }}>
-                      <div className="nm">Total estimado</div>
+                      <div className="nm">Costo total</div>
+                      <div className="val">{fmtCLP(costoTotal)}</div>
+                    </div>
+                    <div className="comp-row">
+                      <div className="nm">Valor venta</div>
                       <div className="val" style={{ color: 'var(--brand)' }}>
-                        {fmtCLP(total)}
+                        {fmtCLP(valorVenta(costoTotal))}
                       </div>
                     </div>
                   </>

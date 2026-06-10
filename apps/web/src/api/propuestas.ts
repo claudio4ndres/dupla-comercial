@@ -17,6 +17,7 @@ interface ComponenteBackend {
   detalle: string | null
   proveedor: string | null
   cantidad: number
+  dias: number
   valor_unitario: number
 }
 
@@ -47,6 +48,7 @@ function aComponente(c: ComponenteBackend): Componente {
     detalle: c.detalle ?? '',
     proveedor: c.proveedor ?? undefined,
     cantidad: c.cantidad,
+    dias: c.dias ?? 1,
     valor: c.valor_unitario,
   }
 }

@@ -13,9 +13,10 @@ const PROPUESTA_BACKEND = {
   componentes: [
     {
       nombre: 'Promotoras uniformadas',
-      detalle: '6h/día × 4 días · 3 tiendas',
+      detalle: '6h/día · 3 tiendas',
       proveedor: 'Staff BTL',
       cantidad: 6,
+      dias: 4,
       valor_unitario: 240000,
     },
   ],
@@ -38,9 +39,10 @@ describe('api/propuestas · obtenerPropuesta (004)', () => {
     // valor_unitario → valor (la UI calcula subtotal con valor × cantidad).
     expect(prop!.componentes[0]).toEqual({
       nombre: 'Promotoras uniformadas',
-      detalle: '6h/día × 4 días · 3 tiendas',
+      detalle: '6h/día · 3 tiendas',
       proveedor: 'Staff BTL',
       cantidad: 6,
+      dias: 4,
       valor: 240000,
     })
     // grupo → área, vencimiento → plazo.
