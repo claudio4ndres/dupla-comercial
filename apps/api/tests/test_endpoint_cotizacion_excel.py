@@ -50,6 +50,7 @@ def _propuesta(solicitud_id, empresa_id=EMPRESA_A):
             ComponentePropuesta(
                 nombre="Promotoras uniformadas",
                 detalle="6h/día · 3 tiendas",
+                proveedor="ISABEL",
                 cantidad=6,
                 valor_unitario=240000,
             ),
@@ -97,6 +98,19 @@ def test_margen_query_param_cambia_el_divisor():
         if isinstance(c.value, str) and c.value.startswith("=G") and "/0.5" in c.value
     ]
     assert formulas, "se esperaba VALOR FINAL con divisor 0.5"
+
+
+def test_columna_proveedor_poblada():
+    # El proveedor persistido del componente baja a la columna PROVEEDOR (B) del Excel.
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    http = _cliente_http(repo)
+
+    r = http.get(f"/solicitudes/{sol}/cotizacion.xlsx")
+
+    ws = openpyxl.load_workbook(BytesIO(r.content)).active
+    col_b = [c.value for fila in ws.iter_rows() for c in fila if c.column == 2]
+    assert "ISABEL" in col_b
 
 
 def test_sin_propuesta_devuelve_404():

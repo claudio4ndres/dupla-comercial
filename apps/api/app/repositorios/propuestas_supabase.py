@@ -25,7 +25,7 @@ from app.repositorios.propuestas import (
 # repo conoce la empresa por el argumento.
 _SELECT = (
     "id,total,estado,"
-    "componentes_propuesta(nombre,detalle,cantidad,valor_unitario),"
+    "componentes_propuesta(nombre,detalle,proveedor,cantidad,valor_unitario),"
     "tareas(nombre,grupo,responsable,vencimiento),"
     "conversaciones!inner(solicitud_id)"
 )

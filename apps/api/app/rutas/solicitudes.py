@@ -136,6 +136,7 @@ async def descargar_cotizacion_excel(
         LineaCotizacion(
             item=c.nombre,
             descripcion=c.detalle or "",
+            proveedor=c.proveedor or "",
             cantidad=c.cantidad,
             dias=1,
             valor_unitario=c.valor_unitario,

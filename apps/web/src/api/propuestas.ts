@@ -15,6 +15,7 @@ const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 interface ComponenteBackend {
   nombre: string
   detalle: string | null
+  proveedor: string | null
   cantidad: number
   valor_unitario: number
 }
@@ -41,7 +42,13 @@ export interface PropuestaResuelta {
 }
 
 function aComponente(c: ComponenteBackend): Componente {
-  return { nombre: c.nombre, detalle: c.detalle ?? '', cantidad: c.cantidad, valor: c.valor_unitario }
+  return {
+    nombre: c.nombre,
+    detalle: c.detalle ?? '',
+    proveedor: c.proveedor ?? undefined,
+    cantidad: c.cantidad,
+    valor: c.valor_unitario,
+  }
 }
 
 function aTarea(t: TareaBackend): Tarea {

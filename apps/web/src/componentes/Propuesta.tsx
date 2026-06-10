@@ -40,6 +40,9 @@ export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExce
                 <tr key={c.nombre}>
                   <td>
                     <b>{c.nombre}</b>
+                    {c.proveedor ? (
+                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>🏷️ {c.proveedor}</div>
+                    ) : null}
                   </td>
                   <td style={{ color: 'var(--muted)' }}>{c.detalle}</td>
                   <td className="num">{c.cantidad}</td>

@@ -119,6 +119,7 @@ class RespuestaConversacion(BaseModel):
 class ComponentePropuestaSalida(BaseModel):
     nombre: str
     detalle: str | None = None
+    proveedor: str | None = None
     cantidad: int = 1
     valor_unitario: float = 0
 

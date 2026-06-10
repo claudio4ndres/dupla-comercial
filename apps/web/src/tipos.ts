@@ -34,6 +34,7 @@ export interface Componente {
   cantidad: number
   valor: number // valor unitario en CLP
   origen?: string // recurso del Drive de donde salió el valor (005)
+  proveedor?: string // quién provee la partida (catering, promotores…) — Excel (007)
 }
 
 /** Origen citable de un dato que usó Javo: recurso del Drive o resultado web (005). */

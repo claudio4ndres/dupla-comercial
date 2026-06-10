@@ -115,17 +115,17 @@ insert into propuestas (id, empresa_id, conversacion_id, total, estado) values
    '00000000-0000-0000-0000-0000000000c1',
    '00000000-0000-0000-0000-0000000c0212', 5190000, 'borrador');
 
-insert into componentes_propuesta (propuesta_id, nombre, detalle, cantidad, valor_unitario) values
+insert into componentes_propuesta (propuesta_id, nombre, detalle, proveedor, cantidad, valor_unitario) values
   ('00000000-0000-0000-0000-000000090212',
-   'Promotoras uniformadas', '6h/día × 4 días · 3 tiendas', 6, 240000),
+   'Promotoras uniformadas', '6h/día × 4 días · 3 tiendas', 'Staff BTL', 6, 240000),
   ('00000000-0000-0000-0000-000000090212',
-   'Muestras 212 VIP Black', 'Sampling 1.5 ml · stock activación', 1500, 1200),
+   'Muestras 212 VIP Black', 'Sampling 1.5 ml · stock activación', 'Capsulab Lab', 1500, 1200),
   ('00000000-0000-0000-0000-000000090212',
-   'Módulo de ambientación', 'Gráfica de campaña + mesón · por tienda', 3, 380000),
+   'Módulo de ambientación', 'Gráfica de campaña + mesón · por tienda', 'Taller 3D', 3, 380000),
   ('00000000-0000-0000-0000-000000090212',
-   'Catering equipo', 'Coffee + almuerzo staff · 4 días', 4, 90000),
+   'Catering equipo', 'Coffee + almuerzo staff · 4 días', 'Muzia', 4, 90000),
   ('00000000-0000-0000-0000-000000090212',
-   'Coordinación y permisos', 'Logística 3 tiendas + permisos mall', 1, 450000);
+   'Coordinación y permisos', 'Logística 3 tiendas + permisos mall', 'Capsulab', 1, 450000);
 
 insert into tareas (empresa_id, propuesta_id, nombre, grupo, responsable, vencimiento) values
   ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-000000090212',

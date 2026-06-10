@@ -11,7 +11,13 @@ const PROPUESTA_BACKEND = {
   total: 5190000,
   estado: 'borrador',
   componentes: [
-    { nombre: 'Promotoras uniformadas', detalle: '6h/día × 4 días · 3 tiendas', cantidad: 6, valor_unitario: 240000 },
+    {
+      nombre: 'Promotoras uniformadas',
+      detalle: '6h/día × 4 días · 3 tiendas',
+      proveedor: 'Staff BTL',
+      cantidad: 6,
+      valor_unitario: 240000,
+    },
   ],
   tareas: [{ nombre: 'Reclutar 6 promotoras', grupo: 'RRHH', responsable: 'Coordinación', vencimiento: '3 días' }],
 }
@@ -33,6 +39,7 @@ describe('api/propuestas · obtenerPropuesta (004)', () => {
     expect(prop!.componentes[0]).toEqual({
       nombre: 'Promotoras uniformadas',
       detalle: '6h/día × 4 días · 3 tiendas',
+      proveedor: 'Staff BTL',
       cantidad: 6,
       valor: 240000,
     })
