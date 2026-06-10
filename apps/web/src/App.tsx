@@ -19,6 +19,7 @@ import { obtenerSolicitudes } from './api/solicitudes'
 import { obtenerPropuesta } from './api/propuestas'
 import { descargarCotizacionExcel } from './api/exportaciones'
 import { obtenerRecursosDrive } from './api/recursos'
+import { obtenerHistorialConversacion } from './api/conversaciones'
 import { supabase } from './supabase/cliente'
 import { COMPONENTES_T1, EMPRESAS, TAREAS_T1, type RecursoDrive } from './datosMock'
 import type {
@@ -194,12 +195,18 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
 
   function iniciarChat(t: TipoConfirmado) {
     if (!solicitudActual) return
+    const sol = solicitudActual
     setTipo(t)
     setComponentes([])
     setTareas([])
     setFuentes([])
-    setMensajes([{ rol: 'javo', contenido: introJavo(solicitudActual, t) }])
+    setMensajes([{ rol: 'javo', contenido: introJavo(sol, t) }])
     irA('chat')
+    // Rehidrata el hilo persistido (T14): si ya hubo conversación para esta
+    // solicitud, reemplaza el saludo inicial; si no, el chat parte desde el saludo.
+    obtenerHistorialConversacion(sol.id).then((historial) => {
+      if (historial.length) setMensajes(historial)
+    })
   }
 
   async function enviarMensaje(texto: string) {
