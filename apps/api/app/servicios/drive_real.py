@@ -1,0 +1,141 @@
+"""Cliente REAL de Google Drive (sólo lectura) + refresh OAuth.
+
+Calca a `gmail_real.py::ClienteGmailReal`: habla con la API REST de Drive vía `httpx`
+y refresca el access token a partir del refresh token de la empresa (que vive en
+`AlmacenSecretos`, regla de oro #3 — los secretos sólo en el backend). El refresh y
+el listado comparten el mismo flujo OAuth que Gmail (mismo `URL_TOKEN_GOOGLE`), porque
+el consentimiento pide AMBOS scopes a la vez (`gmail.readonly` + `drive.readonly`).
+
+Se usa para alimentar el panel "Recursos · Drive": lista los archivos de la carpeta
+de la empresa. `httpx` es inyectable para tests (cero red, igual que el cliente Gmail).
+
+Si el refresh del token falla (revocado/expirado) o no hay secreto, lanza
+`ErrorAutenticacionGmail` (reutilizado: es el error de auth de Google de este backend)
+para que el llamador caiga al comportamiento previo sin caerse.
+"""
+from dataclasses import dataclass
+
+import httpx
+
+from app.repositorios.integraciones import Integracion
+from app.servicios.gmail import ErrorAutenticacionGmail
+from app.servicios.gmail_real import URL_TOKEN_GOOGLE
+
+BASE_DRIVE = "https://www.googleapis.com/drive/v3"
+
+
+@dataclass
+class ArchivoDrive:
+    """Un archivo (o carpeta) del Drive, tal como lo devuelve `files.list`."""
+
+    id: str
+    nombre: str
+    tipo_mime: str
+
+
+def _a_archivo(datos: dict) -> ArchivoDrive:
+    """Mapea una entrada de `files(id,name,mimeType)` a nuestro `ArchivoDrive`."""
+    return ArchivoDrive(
+        id=datos.get("id", ""),
+        nombre=datos.get("name", ""),
+        tipo_mime=datos.get("mimeType", ""),
+    )
+
+
+class ClienteDriveReal:
+    """Lista los archivos de UNA carpeta del Drive de la empresa. Resuelve el refresh
+    token de forma perezosa (en `listar_archivos`, que es async) igual que el cliente
+    Gmail, para que la fábrica pueda ser síncrona."""
+
+    def __init__(
+        self,
+        *,
+        almacen,
+        token_ref: str,
+        client_id: str,
+        client_secret: str,
+        cliente: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._almacen = almacen
+        self._token_ref = token_ref
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._cliente = cliente
+
+    def _http(self) -> httpx.AsyncClient:
+        return self._cliente or httpx.AsyncClient()
+
+    async def _access_token(self, http: httpx.AsyncClient) -> str:
+        """Canjea el refresh token por un access token efímero (refresh OAuth)."""
+        refresh = await self._almacen.obtener(self._token_ref)
+        if not refresh:
+            raise ErrorAutenticacionGmail("No hay refresh token guardado")
+        resp = await http.post(
+            URL_TOKEN_GOOGLE,
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh,
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
+            },
+        )
+        if resp.status_code != 200:
+            raise ErrorAutenticacionGmail(
+                f"Refresh rechazado por Google ({resp.status_code})"
+            )
+        access = resp.json().get("access_token")
+        if not access:
+            raise ErrorAutenticacionGmail("Google no devolvió access_token")
+        return access
+
+    async def listar_archivos(self, folder_id: str) -> list[ArchivoDrive]:
+        """Lista los archivos NO en papelera de la carpeta `folder_id`.
+
+        Pide sólo `id,name,mimeType` (lo justo para el panel/catálogo). Devuelve los
+        archivos en el orden que entrega la Drive API.
+        """
+        http = self._http()
+        try:
+            token = await self._access_token(http)
+            resp = await http.get(
+                f"{BASE_DRIVE}/files",
+                params={
+                    "q": f"'{folder_id}' in parents and trashed=false",
+                    "fields": "files(id,name,mimeType)",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            resp.raise_for_status()
+            return [_a_archivo(f) for f in resp.json().get("files", []) or []]
+        finally:
+            if self._cliente is None:
+                await http.aclose()
+
+
+class FabricaClienteDriveReal:
+    """Construye el `ClienteDriveReal` de UNA integración. Le pasa el `token_ref`
+    (no el secreto en claro): el cliente resuelve el refresh contra `AlmacenSecretos`
+    al momento de listar. Calca a `FabricaClienteGmailReal` (mismo refresh token de la
+    empresa, porque el consentimiento cubre Gmail y Drive a la vez)."""
+
+    def __init__(
+        self,
+        *,
+        almacen,
+        client_id: str,
+        client_secret: str,
+        cliente: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._almacen = almacen
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._cliente = cliente
+
+    def crear(self, integracion: Integracion) -> ClienteDriveReal:
+        return ClienteDriveReal(
+            almacen=self._almacen,
+            token_ref=integracion.token_ref,
+            client_id=self._client_id,
+            client_secret=self._client_secret,
+            cliente=self._cliente,
+        )

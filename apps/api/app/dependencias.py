@@ -19,6 +19,7 @@ from app.repositorios.propuestas_supabase import RepositorioPropuestasSupabase
 from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
 from app.servicios.busqueda_internet import ProveedorBusquedaCurado
 from app.servicios.cliente_anthropic import ClienteAnthropicHttpx
+from app.servicios.drive_real import FabricaClienteDriveReal
 from app.servicios.empresa import ResolvedorEmpresaSupabase
 from app.servicios.jwt_supabase import VerificadorJwtSupabase
 from app.servicios.gmail_real import FabricaClienteGmailReal
@@ -186,6 +187,19 @@ def obtener_fabrica_cliente_gmail() -> FabricaClienteGmailReal:
     singleton para resolver el refresh de cada casilla (regla de oro #3)."""
     settings = obtener_settings()
     return FabricaClienteGmailReal(
+        almacen=obtener_almacen_secretos(),
+        client_id=settings.google_client_id,
+        client_secret=settings.google_client_secret,
+    )
+
+
+def obtener_fabrica_cliente_drive() -> FabricaClienteDriveReal:
+    """Fábrica real (token_ref → cliente Drive). Calca a la de Gmail: comparte el
+    mismo almacén de secretos singleton y las mismas credenciales OAuth de Google
+    (el consentimiento cubre Gmail y Drive a la vez). Alimenta el panel "Recursos ·
+    Drive". En tests se sobrescribe con un doble vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    return FabricaClienteDriveReal(
         almacen=obtener_almacen_secretos(),
         client_id=settings.google_client_id,
         client_secret=settings.google_client_secret,

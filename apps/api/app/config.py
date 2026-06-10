@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = ""
 
+    # Carpeta del Google Drive de la empresa de donde se leen los recursos del
+    # catálogo (panel "Recursos · Drive"). Default: la carpeta REAL del cliente
+    # piloto (Capsulab). Se sobreescribe por empresa/entorno con `DRIVE_FOLDER_ID`.
+    drive_folder_id: str = "1sPeaZbXVi4q-eXNkwGTTpaZUgKNuhy1i"
+
     # Service role key de Supabase (Settings → API). SÓLO backend/poller: salta la
     # RLS, por eso el poller fija `empresa_id` explícito en cada fila (TR3). NUNCA
     # exponer al front.
