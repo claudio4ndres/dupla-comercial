@@ -1,9 +1,47 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Bandeja } from './Bandeja'
-import { SOLICITUDES } from '../datosMock'
+import type { Solicitud } from '../tipos'
 
 const noop = () => {}
+
+// Fixture local de la bandeja (antes venía del mock `SOLICITUDES`, ya eliminado):
+// cubre los tres tipos de badge (t1/t2/new) que verifica esta suite.
+const SOLICITUDES: Solicitud[] = [
+  {
+    id: 'espiga',
+    remitente: 'Zona Espiga',
+    correo: 'contacto@zonaespiga.cl',
+    tiempo: '09-jun',
+    asunto: 'Cotización sampling de sopaipillas afuera del Metro',
+    tipo: 't1',
+    resumen: 'Sampling de sopaipillas afuera del Metro.',
+    puntos: ['Activación de sampling', '5 horas diarias'],
+    cuerpo: 'Hola Javo, queremos cotizar un sampling de sopaipillas.',
+  },
+  {
+    id: 'f1',
+    remitente: 'Fórmula 1 LATAM',
+    correo: 'marketing@f1latam.com',
+    tiempo: '08-jun',
+    asunto: 'Necesitamos ideas — activación Fórmula 1',
+    tipo: 't2',
+    resumen: 'Ideas de activación para la Fórmula 1.',
+    puntos: ['Sin brief cerrado', 'Alto impacto'],
+    cuerpo: 'Hola Javo, necesitamos ideas para la Fórmula 1.',
+  },
+  {
+    id: 'narnia',
+    remitente: 'Netflix · Narnia',
+    correo: 'activaciones@partner.netflix.com',
+    tiempo: '07-jun',
+    asunto: 'Activación estreno Narnia en cines (Octubre)',
+    tipo: 'new',
+    resumen: 'Estreno de Narnia en cines, por clasificar.',
+    puntos: ['Estreno en cines', 'Por clasificar'],
+    cuerpo: 'Hola Javo, pensamos algo para el estreno de Narnia.',
+  },
+]
 
 describe('Bandeja', () => {
   it('muestra las solicitudes con su badge de tipo', () => {

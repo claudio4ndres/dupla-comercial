@@ -4,81 +4,13 @@
 //   - Tareas -> ClickUp API
 // Mientras el backend no esté cableado, la UI corre 100% con esto.
 
-import type { Componente, Empresa, OpcionProveedor, Solicitud, Tarea } from './tipos'
+import type { Componente, Empresa, OpcionProveedor, Tarea } from './tipos'
 
 /** Recurso (archivo) que el sistema consultaría en el Drive de la empresa. */
 export interface RecursoDrive {
   icono: string
   nombre: string
 }
-
-/** Bandeja de solicitudes (orden de llegada). */
-export const SOLICITUDES: Solicitud[] = [
-  {
-    id: 'espiga',
-    remitente: 'Zona Espiga',
-    correo: 'contacto@zonaespiga.cl',
-    tiempo: '09:42',
-    asunto: 'Cotización sampling de sopaipillas afuera del Metro',
-    tipo: 't1',
-    resumen:
-      'Solicitud concreta de cotización para una activación de sampling: regalar sopaipillas afuera del Metro durante 5 horas diarias.',
-    puntos: [
-      'Activación tipo sampling en exterior (Metro)',
-      '5 horas diarias',
-      'Requieren catering, promotores, producto y uniforme',
-      'Piden valores para evaluar',
-    ],
-    cuerpo: `Hola Javo, ¿cómo estás?
-
-Queremos cotizar regalar sopaipillas afuera del Metro. La idea es una activación de sampling de 5 horas diarias.
-
-Necesitamos el catering (alguien que haga las sopaipillas), un par de promotores, el producto y los uniformes. ¿Nos puedes pasar los valores para revisar el proyecto?
-
-Saludos,
-Equipo Zona Espiga`,
-  },
-  {
-    id: 'f1',
-    remitente: 'Fórmula 1 LATAM',
-    correo: 'marketing@f1latam.com',
-    tiempo: 'Ayer',
-    asunto: 'Necesitamos ideas — activación Fórmula 1',
-    tipo: 't2',
-    resumen:
-      'Solicitud creativa: el cliente está viendo la campaña de la Fórmula 1 y pide ideas de activación de alto impacto antes de definir el proyecto.',
-    puntos: [
-      'No hay brief cerrado todavía — buscan conceptos',
-      'Campaña ligada a la Fórmula 1',
-      'Quieren propuestas de alto impacto',
-      'Hay que proponer ideas y luego definir acciones',
-    ],
-    cuerpo: `Hola Javo, ¿cómo está?
-
-Estamos viendo la campaña de la Fórmula 1 y necesitamos ideas que nos puedas mandar para poder ver el proyecto.
-
-Buscamos algo de alto impacto, que la gente recuerde. Quedamos atentos a lo que se te ocurra.
-
-Saludos,
-Marketing F1 LATAM`,
-  },
-  {
-    id: 'narnia',
-    remitente: 'Netflix · Narnia',
-    correo: 'activaciones@partner.netflix.com',
-    tiempo: '2 días',
-    asunto: 'Activación estreno Narnia en cines (Octubre)',
-    tipo: 'new',
-    resumen:
-      'Posible activación para el estreno de Narnia en cines durante octubre. Falta clasificar si es cotización concreta o pedido de ideas.',
-    puntos: ['Estreno en cines · Octubre', 'Aún sin definir alcance', 'Por clasificar'],
-    cuerpo: `Hola Javo,
-
-Para el estreno de Narnia en octubre estamos pensando en algo en los cines. Te escribimos para empezar a conversar opciones.
-
-Saludos.`,
-  },
-]
 
 /** Componentes que Javo arma para la cotización Tipo 1 (valores del Drive). */
 export const COMPONENTES_T1: Componente[] = [
@@ -99,11 +31,13 @@ export const TAREAS_T1: Tarea[] = [
   { nombre: 'Armar reporte y enviar propuesta al cliente', area: 'Comercial', responsable: 'Javo', plazo: '1 día' },
 ]
 
-/** Empresas (tenants). La primera es la activa. White-label: cada una su color. */
+/**
+ * Empresas (tenants). La primera es la activa. White-label: cada una su color.
+ * Sólo Capsulab: es la única con datos reales y RLS del usuario piloto. Las
+ * empresas de demo se quitaron porque al cambiarlas la bandeja quedaba vacía.
+ */
 export const EMPRESAS: Empresa[] = [
   { nombre: 'Capsulab', color: '#F04E37', marca: 'C', etiqueta: 'Plan piloto · BTL' },
-  { nombre: 'Marca Demo', color: '#2c5fef', marca: 'M' },
-  { nombre: 'Espiga', color: '#0E7C5A', marca: 'E' },
 ]
 
 /**

@@ -29,6 +29,9 @@ class SolicitudListada(BaseModel):
     resumen: str | None = None
     tipo: str = "sin_clasificar"
     estado: str = "nueva"
+    # Fecha/hora de recepción del correo (ISO 8601), tomada de `creado_en`. El front
+    # la formatea para la tarjeta de la bandeja; null si la fila no la trae.
+    recibido_en: str | None = None
 
 
 class EstadoCorreo(BaseModel):

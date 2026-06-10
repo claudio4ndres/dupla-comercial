@@ -58,6 +58,8 @@ async def listar_solicitudes(
             resumen=s.resumen,
             tipo=s.tipo,
             estado=s.estado,
+            # `creado_en` (timestamptz) → ISO 8601 para el front; None si la fila no la trae.
+            recibido_en=s.creado_en.isoformat() if s.creado_en else None,
         )
         for s in solicitudes
     ]

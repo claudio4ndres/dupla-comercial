@@ -21,6 +21,7 @@ interface SolicitudBackend {
   resumen: string | null
   tipo: string // 'sin_clasificar' | 'tipo_1' | 'tipo_2'
   estado: string
+  recibido_en: string | null // ISO 8601 (de `creado_en`); null si la fila no la trae.
 }
 
 /** Mapea la enum canónica de la tabla `solicitudes` al código corto de la UI. */
@@ -30,12 +31,23 @@ const MAPA_TIPO: Record<string, TipoSolicitud> = {
   sin_clasificar: 'new',
 }
 
+/**
+ * Formatea la fecha de recepción (ISO) para la tarjeta de la bandeja: día + mes
+ * corto en español de Chile (ej. "09-jun"). Sin fecha o fecha inválida → ''.
+ */
+function formatearFecha(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })
+}
+
 function aSolicitud(s: SolicitudBackend): Solicitud {
   return {
     id: s.id,
     remitente: s.remitente || s.correo_origen || '(sin remitente)',
     correo: s.correo_origen ?? '',
-    tiempo: '', // el backend aún no expone fecha; la UI lo deja en blanco.
+    tiempo: formatearFecha(s.recibido_en), // fecha del correo (de `creado_en`).
     asunto: s.asunto,
     tipo: MAPA_TIPO[s.tipo] ?? 'new',
     resumen: s.resumen ?? '',
