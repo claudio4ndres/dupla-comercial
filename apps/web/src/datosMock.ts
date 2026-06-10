@@ -117,11 +117,3 @@ export const PROVEEDORES_CORREO: OpcionProveedor[] = [
   { id: 'outlook', nombre: 'Outlook', icono: '📨' },
   { id: 'imap', nombre: 'Otro (IMAP)', icono: '✉️' },
 ]
-
-/** Archivos que el sistema mostraría desde el Drive de la empresa. */
-export const RECURSOS_DRIVE: RecursoDrive[] = [
-  { icono: '📄', nombre: 'Tarifario_promotores_2026.xlsx' },
-  { icono: '📦', nombre: 'Costos_catering_sopaipilla.xlsx' },
-  { icono: '🎽', nombre: 'Uniformes_proveedores.pdf' },
-  { icono: '🏎️', nombre: 'Casos_activaciones_F1.pptx' },
-]
