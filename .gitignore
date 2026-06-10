@@ -25,3 +25,6 @@ apps/api/.secretos.local.json
 # Supabase local
 supabase/.branches/
 supabase/.temp/
+
+# Worktrees temporales de agentes (Claude) — nunca al repo
+.claude/worktrees/
