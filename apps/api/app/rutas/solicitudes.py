@@ -118,6 +118,7 @@ async def obtener_propuesta(
 async def descargar_cotizacion_excel(
     solicitud_id: UUID,
     margen: float = 0.40,
+    vista: str = "interno",
     repo=Depends(obtener_repositorio_propuestas),
     empresa_id: UUID = Depends(obtener_empresa_actual),
 ) -> Response:
@@ -125,9 +126,10 @@ async def descargar_cotizacion_excel(
 
     Reusa la propuesta persistida (spec 004) — sólo la de la empresa del usuario (RLS).
     Sin propuesta → 404. `valor_unitario` de cada componente es el COSTO unitario; el
-    `margen` (query param, 0.40 por defecto) se aplica en la planilla para el VALOR
-    FINAL. `proveedor`/`días` no se persisten hoy: van vacío y 1 respectivamente.
-    """
+    `margen` (query param, 0.40 por defecto) se aplica para el precio de venta. `días`
+    no se persiste hoy (va 1). `vista`: `interno` (costos + margen, default) o `cliente`
+    (solo precios de venta, sin exponer costos)."""
+    vista_norm = "cliente" if vista == "cliente" else "interno"
     propuesta = await repo.obtener_por_solicitud(solicitud_id, empresa_id)
     if propuesta is None:
         raise HTTPException(status_code=404, detail="La solicitud no tiene propuesta")
@@ -143,13 +145,15 @@ async def descargar_cotizacion_excel(
         )
         for c in propuesta.componentes
     ]
-    contenido = generar_excel_cotizacion(lineas, titulo="Cotización", margen=margen)
+    contenido = generar_excel_cotizacion(
+        lineas, titulo="Cotización", margen=margen, vista=vista_norm
+    )
     return Response(
         content=contenido,
         media_type=_MEDIA_XLSX,
         headers={
             "Content-Disposition": (
-                f'attachment; filename="cotizacion-{solicitud_id}.xlsx"'
+                f'attachment; filename="cotizacion-{vista_norm}-{solicitud_id}.xlsx"'
             )
         },
     )

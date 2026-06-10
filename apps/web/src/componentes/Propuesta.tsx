@@ -4,11 +4,13 @@ interface Props {
   componentes: Componente[]
   onVolver: () => void
   onArmarTareas: () => void
-  /** Descarga la cotización como .xlsx con el theme Capsulab (007). */
-  onExportarExcel?: () => void
+  /** Descarga la cotización como .xlsx con el theme Capsulab (007). `vista`:
+   * `interno` (costos + margen) o `cliente` (solo precios de venta). */
+  onExportarExcel?: (vista: 'interno' | 'cliente') => void
 }
 
 export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExcel }: Props) {
+  const exportar = onExportarExcel ?? (() => alert('Exportar a Excel'))
   const total = componentes.reduce((acc, c) => acc + c.valor * c.cantidad, 0)
 
   return (
@@ -68,11 +70,11 @@ export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExce
           >
             ⤓ PPT
           </button>
-          <button
-            className="btn ghost"
-            onClick={onExportarExcel ?? (() => alert('Exportar a Excel'))}
-          >
-            ⤓ Excel
+          <button className="btn ghost" onClick={() => exportar('interno')}>
+            ⤓ Excel interno
+          </button>
+          <button className="btn ghost" onClick={() => exportar('cliente')}>
+            ⤓ Excel cliente
           </button>
         </div>
       </div>

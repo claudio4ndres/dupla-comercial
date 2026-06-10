@@ -148,3 +148,36 @@ def test_una_fila_por_componente():
     fila_sub, _ = _buscar(ws, "SUB TOTAL")
     # filas de datos entre encabezado y subtotal == número de componentes
     assert fila_sub - (fila_h + 1) == len(_LINEAS)
+
+
+# --- Vista CLIENTE (007 · solo precios de venta, sin costos/margen) -----------
+def test_vista_cliente_no_filtra_costos_ni_margen():
+    ws = _hoja(vista="cliente", margen=0.40)
+    planos = [c.value for fila in ws.iter_rows() for c in fila]
+    # El archivo que se manda al cliente NO contiene costo, margen ni proveedor.
+    assert "COSTO" not in planos
+    assert "MARGEN" not in planos
+    assert "PROVEEDOR" not in planos
+    assert 240000 not in planos  # el costo unitario no se filtra a ninguna celda
+
+
+def test_vista_cliente_layout_y_valor_de_venta():
+    ws = _hoja(vista="cliente", margen=0.40)
+    # Encabezado cliente.
+    assert [ws.cell(row=2, column=c).value for c in range(1, 5)] == [
+        "Item",
+        "DESCRIPCIÓN",
+        "Cantidad",
+        "VALOR",
+    ]
+    # Primera línea: Promotoras (cant 6 · días 4 · costo 240000) → venta con
+    # margen 0.40: 6×4×240000/0.6 = 9.600.000.
+    assert ws.cell(row=3, column=1).value == "Promotoras uniformadas"
+    assert ws.cell(row=3, column=3).value == 6
+    assert ws.cell(row=3, column=4).value == 9_600_000
+
+
+def test_vista_cliente_total_cian():
+    ws = _hoja(vista="cliente", margen=0.40)
+    fila_total, _ = _buscar(ws, "VALOR TOTAL")
+    assert _fill(ws.cell(row=fila_total, column=4)) == CIAN

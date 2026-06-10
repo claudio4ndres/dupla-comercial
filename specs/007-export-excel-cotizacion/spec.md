@@ -70,6 +70,7 @@ Hoja de cotización ("Consolidado"):
 - Export a PPT (sigue como `alert`, otra spec).
 - Multi-hoja (una hoja por locación/escenario como el archivo modelo): por ahora **una
   hoja consolidada**.
-- Versión cliente (sólo VALOR FINAL, sin COSTO/MARGEN): se evaluará después; el archivo
-  modelo entregado es el interno.
+- ✅ Versión cliente (sólo precios de venta, sin COSTO/MARGEN ni proveedor):
+  **implementada** como `?vista=cliente` (botón «⤓ Excel cliente»). El costo nunca se
+  escribe en el archivo. Default sigue siendo `interno`.
 - Persistir el archivo en Storage: se genera al vuelo en cada descarga.

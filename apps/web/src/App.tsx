@@ -307,7 +307,9 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
               onVolver={() => irA('chat')}
               onArmarTareas={() => irA('tareas')}
               onExportarExcel={
-                solicitudActual ? () => void descargarCotizacionExcel(solicitudActual.id) : undefined
+                solicitudActual
+                  ? (vista) => void descargarCotizacionExcel(solicitudActual.id, vista)
+                  : undefined
               }
             />
           )}

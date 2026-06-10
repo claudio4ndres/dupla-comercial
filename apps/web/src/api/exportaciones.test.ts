@@ -33,10 +33,22 @@ describe('api/exportaciones · descargarCotizacionExcel', () => {
     expect(ok).toBe(true)
     const [url, opciones] = fetchMock.mock.calls[0]
     expect(url).toContain('/solicitudes/sol-123/cotizacion.xlsx')
+    expect(url).toContain('vista=interno') // por defecto, vista interna
     expect((opciones.headers as Record<string, string>).Authorization).toBe('Bearer tok123')
     expect(createUrl).toHaveBeenCalledOnce()
     expect(clickSpy).toHaveBeenCalledOnce()
     expect(revokeUrl).toHaveBeenCalledOnce()
+  })
+
+  it('vista cliente agrega ?vista=cliente a la URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(respuestaBlob())
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    await descargarCotizacionExcel('sol-9', 'cliente')
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('vista=cliente')
   })
 
   it('ante error (404) devuelve false y no rompe la UI', async () => {

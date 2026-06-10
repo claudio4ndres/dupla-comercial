@@ -4,30 +4,31 @@ Lógica **pura** (sin FastAPI): recibe las líneas de la cotización y devuelve 
 BYTES de un `.xlsx`. El endpoint (`rutas/solicitudes.py`) mapea la propuesta
 persistida (spec 004) a `LineaCotizacion` y sirve estos bytes como descarga.
 
-El formato replica el archivo modelo de Capsulab `PF - Fuchs cerros.xlsx`:
+Dos vistas, mismo theme (archivo modelo `PF - Fuchs cerros.xlsx`):
 
-* Banda de **título** negra con Arial 25 bold blanca, fusionada a lo ancho.
-* **Encabezado** verde `FF8ED873` (Arial bold) con las 9 columnas
+* **interno** (default): el documento de trabajo de la agencia. Banda de título
+  negra (Arial 25 blanca), encabezado verde `FF8ED873` con las 9 columnas
   `Item · PROVEEDOR · DESCRIPCIÓN · Cantidad · días · valor unitario · COSTO ·
-  MARGEN · VALOR FINAL`.
-* Datos con **fórmulas** (faithful + editable por el GP):
-  `COSTO = Cantidad × días × valor unitario`,
-  `VALOR FINAL = COSTO / (1 − margen)`,
-  `MARGEN = 1 − COSTO / VALOR FINAL`.
-* **Subtotal** amarillo `FFFFFF00` (SUM de COSTO y VALOR FINAL) y **valor venta**
-  cian `FF00FFFF` (= subtotal de VALOR FINAL).
+  MARGEN · VALOR FINAL`. `COSTO = Cantidad×días×valor`, `VALOR FINAL =
+  COSTO/(1−margen)`, subtotal amarillo y valor venta cian.
+* **cliente**: lo que se le manda a la marca. Solo precios de **venta**; NO escribe
+  costo, margen ni proveedor en ninguna celda (no se filtran aunque "desoculten"
+  columnas). Columnas `Item · DESCRIPCIÓN · Cantidad · VALOR`, con
+  `VALOR = Cantidad×días×valor/(1−margen)` y un total cian.
 
-`valor_unitario` es el **costo** unitario (lo que Javo trae del Drive); el margen se
-aplica en la planilla para llegar al precio de venta.
+`valor_unitario` es el **costo** unitario (lo que Javo trae del Drive); el margen
+se aplica para llegar al precio de venta.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
+from typing import Literal
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 # --- Theme Capsulab (ARGB) ---------------------------------------------------
 NEGRO = "FF000000"
@@ -42,7 +43,7 @@ FMT_CLP = '_ "$"* #,##0_ ;_ "$"* \\-#,##0_ ;_ "$"* "-"_ ;_ @_ '
 FMT_FINAL = '#,##0_ ;[Red]\\-#,##0\\ '
 FMT_PCT = "0%"
 
-# Columnas en el orden del modelo (A..I) y sus anchos.
+# Columnas de la vista INTERNA (A..I) y sus anchos.
 COLUMNAS = [
     ("Item", 26),
     ("PROVEEDOR", 22),
@@ -55,6 +56,14 @@ COLUMNAS = [
     ("VALOR FINAL", 18),
 ]
 N_COLS = len(COLUMNAS)
+
+# Columnas de la vista CLIENTE (A..D): sin costo, margen ni proveedor.
+COLUMNAS_CLIENTE = [
+    ("Item", 30),
+    ("DESCRIPCIÓN", 56),
+    ("Cantidad", 12),
+    ("VALOR", 18),
+]
 
 FILA_TITULO = 1
 FILA_ENCABEZADO = 2
@@ -77,45 +86,65 @@ def _relleno(color: str) -> PatternFill:
     return PatternFill(start_color=color, end_color=color, fill_type="solid")
 
 
+def _anchos(ws: Worksheet, columnas: list[tuple[str, int]]) -> None:
+    for i, (_, ancho) in enumerate(columnas, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = ancho
+
+
+def _banda_titulo(ws: Worksheet, titulo: str, n_cols: int) -> None:
+    """Banda superior negra con Arial 25 blanca, fusionada a lo ancho de la tabla."""
+    ws.merge_cells(
+        start_row=FILA_TITULO, start_column=1, end_row=FILA_TITULO, end_column=n_cols
+    )
+    celda = ws.cell(row=FILA_TITULO, column=1, value=titulo)
+    celda.fill = _relleno(NEGRO)
+    celda.font = Font(name=FUENTE, size=25, bold=True, color=BLANCO)
+    celda.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[FILA_TITULO].height = 34
+
+
+def _encabezado(ws: Worksheet, columnas: list[tuple[str, int]]) -> None:
+    """Fila de encabezado verde (Arial bold)."""
+    verde = _relleno(VERDE)
+    for c, (etiqueta, _) in enumerate(columnas, start=1):
+        celda = ws.cell(row=FILA_ENCABEZADO, column=c, value=etiqueta)
+        celda.fill = verde
+        celda.font = Font(name=FUENTE, size=11, bold=True)
+        celda.alignment = Alignment(vertical="center", wrap_text=True)
+
+
 def generar_excel_cotizacion(
     lineas: list[LineaCotizacion],
     *,
     titulo: str = "Cotización",
     margen: float = 0.40,
+    vista: Literal["interno", "cliente"] = "interno",
 ) -> bytes:
     """Arma el libro de la cotización y devuelve sus bytes (.xlsx).
 
-    `margen` es la fracción de margen (0.40 = 40 %); el VALOR FINAL divide el COSTO
-    por `1 − margen` (el modelo Capsulab usa `/0.6`). Se trunca a 6 cifras para que
-    la fórmula quede limpia (sin ruido de coma flotante).
+    `margen` es la fracción de margen (0.40 = 40 %). `vista`:
+      * `"interno"` (default): costos + margen + valor final (doc de la agencia).
+      * `"cliente"`: solo precios de venta (lo que se le manda a la marca).
     """
     wb = Workbook()
     ws = wb.active
     ws.title = "Cotización"
+    if vista == "cliente":
+        _construir_cliente(ws, lineas, titulo=titulo, margen=margen)
+    else:
+        _construir_interno(ws, lineas, titulo=titulo, margen=margen)
+    buffer = BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
 
-    # Anchos de columna.
-    for i, (_, ancho) in enumerate(COLUMNAS, start=1):
-        ws.column_dimensions[get_column_letter(i)].width = ancho
 
-    # --- Banda de título (negra / Arial 25 blanca, fusionada) ---
-    ws.merge_cells(
-        start_row=FILA_TITULO, start_column=1, end_row=FILA_TITULO, end_column=N_COLS
-    )
-    celda_titulo = ws.cell(row=FILA_TITULO, column=1, value=titulo)
-    celda_titulo.fill = _relleno(NEGRO)
-    celda_titulo.font = Font(name=FUENTE, size=25, bold=True, color=BLANCO)
-    celda_titulo.alignment = Alignment(horizontal="left", vertical="center")
-    ws.row_dimensions[FILA_TITULO].height = 34
+def _construir_interno(
+    ws: Worksheet, lineas: list[LineaCotizacion], *, titulo: str, margen: float
+) -> None:
+    _anchos(ws, COLUMNAS)
+    _banda_titulo(ws, titulo, N_COLS)
+    _encabezado(ws, COLUMNAS)
 
-    # --- Encabezado verde ---
-    relleno_verde = _relleno(VERDE)
-    for c, (etiqueta, _) in enumerate(COLUMNAS, start=1):
-        celda = ws.cell(row=FILA_ENCABEZADO, column=c, value=etiqueta)
-        celda.fill = relleno_verde
-        celda.font = Font(name=FUENTE, size=11, bold=True)
-        celda.alignment = Alignment(vertical="center", wrap_text=True)
-
-    # --- Filas de datos (con fórmulas) ---
     divisor = f"{1 - margen:g}"  # 0.40 → "0.6"; limpia ruido de float
     fila_ini = FILA_DATOS
     fuente = Font(name=FUENTE, size=11)
@@ -143,9 +172,9 @@ def generar_excel_cotizacion(
 
     fila_fin = fila_ini + len(lineas) - 1 if lineas else fila_ini
 
-    # --- Subtotal (amarillo) ---
+    # Subtotal (amarillo).
     fila_sub = fila_fin + 1
-    relleno_amarillo = _relleno(AMARILLO)
+    amarillo = _relleno(AMARILLO)
     et_sub = ws.cell(row=fila_sub, column=6, value="SUB TOTAL COSTOS")
     et_sub.font = Font(name=FUENTE, size=11, bold=True)
     sub_g = ws.cell(row=fila_sub, column=7, value=f"=SUM(G{fila_ini}:G{fila_fin})")
@@ -157,19 +186,56 @@ def generar_excel_cotizacion(
     sub_i.number_format = FMT_FINAL
     sub_i.font = Font(name=FUENTE, size=11, bold=True)
     for c in range(6, N_COLS + 1):
-        ws.cell(row=fila_sub, column=c).fill = relleno_amarillo
+        ws.cell(row=fila_sub, column=c).fill = amarillo
 
-    # --- Valor venta (cian) ---
+    # Valor venta (cian).
     fila_venta = fila_sub + 1
-    relleno_cian = _relleno(CIAN)
+    cian = _relleno(CIAN)
     et_venta = ws.cell(row=fila_venta, column=8, value="VALOR VENTA")
     et_venta.font = Font(name=FUENTE, size=11, bold=True)
     venta_i = ws.cell(row=fila_venta, column=9, value=f"=I{fila_sub}")
     venta_i.number_format = FMT_CLP
     venta_i.font = Font(name=FUENTE, size=11, bold=True)
     for c in range(8, N_COLS + 1):
-        ws.cell(row=fila_venta, column=c).fill = relleno_cian
+        ws.cell(row=fila_venta, column=c).fill = cian
 
-    buffer = BytesIO()
-    wb.save(buffer)
-    return buffer.getvalue()
+
+def _construir_cliente(
+    ws: Worksheet, lineas: list[LineaCotizacion], *, titulo: str, margen: float
+) -> None:
+    """Vista para el cliente: solo precios de venta. NUNCA escribe costo, margen ni
+    proveedor en una celda (no se filtran aunque desoculten columnas)."""
+    n_cols = len(COLUMNAS_CLIENTE)
+    _anchos(ws, COLUMNAS_CLIENTE)
+    _banda_titulo(ws, titulo, n_cols)
+    _encabezado(ws, COLUMNAS_CLIENTE)
+
+    fila_ini = FILA_DATOS
+    fuente = Font(name=FUENTE, size=11)
+    for n, linea in enumerate(lineas):
+        r = fila_ini + n
+        ws.cell(row=r, column=1, value=linea.item).font = fuente
+        celda_desc = ws.cell(row=r, column=2, value=linea.descripcion)
+        celda_desc.font = fuente
+        celda_desc.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.cell(row=r, column=3, value=linea.cantidad).font = fuente
+        # Precio de VENTA de la línea (ya con margen). Se escribe el número calculado,
+        # NO una fórmula que referencie el costo: así el costo no queda en el archivo.
+        venta = round(linea.cantidad * linea.dias * linea.valor_unitario / (1 - margen))
+        d = ws.cell(row=r, column=4, value=venta)
+        d.number_format = FMT_CLP
+        d.font = Font(name=FUENTE, size=11, bold=True)
+
+    fila_fin = fila_ini + len(lineas) - 1 if lineas else fila_ini
+
+    # Total (cian).
+    fila_total = fila_fin + 1
+    cian = _relleno(CIAN)
+    et = ws.cell(row=fila_total, column=3, value="VALOR TOTAL")
+    et.font = Font(name=FUENTE, size=11, bold=True)
+    et.alignment = Alignment(horizontal="right")
+    total = ws.cell(row=fila_total, column=4, value=f"=SUM(D{fila_ini}:D{fila_fin})")
+    total.number_format = FMT_CLP
+    total.font = Font(name=FUENTE, size=11, bold=True)
+    for c in range(3, n_cols + 1):
+        ws.cell(row=fila_total, column=c).fill = cian

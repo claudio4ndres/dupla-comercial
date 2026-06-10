@@ -113,6 +113,26 @@ def test_columna_proveedor_poblada():
     assert "ISABEL" in col_b
 
 
+def test_vista_cliente_no_expone_costos():
+    # ?vista=cliente → archivo sin COSTO/MARGEN ni el costo unitario (240000).
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    http = _cliente_http(repo)
+
+    r = http.get(f"/solicitudes/{sol}/cotizacion.xlsx?vista=cliente")
+
+    assert r.status_code == 200
+    assert "cotizacion-cliente-" in r.headers.get("content-disposition", "")
+    planos = [
+        c.value
+        for fila in openpyxl.load_workbook(BytesIO(r.content)).active.iter_rows()
+        for c in fila
+    ]
+    assert "COSTO" not in planos
+    assert "MARGEN" not in planos
+    assert 240000 not in planos
+
+
 def test_sin_propuesta_devuelve_404():
     repo = RepositorioPropuestasEnMemoria([])
     http = _cliente_http(repo)
