@@ -116,8 +116,8 @@ export function Sidebar({
 
       <div className="nav-label">Cuenta</div>
       <div
-        className="nav-item"
-        onClick={() => alert('Pantalla de ajustes / conexiones (Drive, ClickUp, Gmail) — pendiente de definir')}
+        className={'nav-item' + (pantalla === 'configuracion' ? ' active' : '')}
+        onClick={() => onIrA('configuracion')}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="3" />

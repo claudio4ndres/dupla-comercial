@@ -8,6 +8,7 @@ interface Props {
 }
 
 const NOMBRE_PANTALLA: Record<Pantalla, string> = {
+  configuracion: 'Configuración · conectores',
   inbox: 'Bandeja de solicitudes',
   detail: 'Solicitud',
   chat: 'Conversación con Javo',

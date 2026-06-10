@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Sidebar } from './componentes/Sidebar'
 import { Topbar } from './componentes/Topbar'
 import { Bandeja } from './componentes/Bandeja'
+import { Configuracion } from './componentes/Configuracion'
 import { DetalleSolicitud } from './componentes/DetalleSolicitud'
 import { Chat } from './componentes/Chat'
 import { Propuesta } from './componentes/Propuesta'
@@ -76,7 +77,9 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     return () => subscription.unsubscribe()
   }, [])
   const [empresa, setEmpresa] = useState<Empresa>(EMPRESAS[0])
-  const [pantalla, setPantalla] = useState<Pantalla>('inbox')
+  // Landing post-login: el onboarding de Configuración (cada empresa "prepara su
+  // espacio" conectando sus conectores). Desde ahí se continúa a la bandeja.
+  const [pantalla, setPantalla] = useState<Pantalla>('configuracion')
   // Estado de la bandeja (proveedor + estado) según el backend (null = sin conectar).
   const [estadoCorreo, setEstadoCorreo] = useState<EstadoCorreo>(ESTADO_DESCONECTADO)
   // Solicitudes REALES de la empresa (las que el poller ingirió desde el correo).
@@ -326,6 +329,15 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
         <Topbar empresa={empresa} pantalla={pantalla} onAbrirMenu={() => setMenuAbierto((v) => !v)} onCerrarSesion={cerrarSesion} />
 
         <div className="scroll">
+          {pantalla === 'configuracion' && (
+            <Configuracion
+              estadoCorreo={estadoCorreo}
+              onConectar={conectarProveedor}
+              onDesconectar={desconectarProveedor}
+              onIrA={irA}
+            />
+          )}
+
           {pantalla === 'inbox' && (
             <Bandeja
               solicitudes={solicitudes}

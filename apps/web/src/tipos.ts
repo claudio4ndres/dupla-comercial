@@ -83,9 +83,11 @@ export interface Mensaje {
 }
 
 /** Pantallas de la app (router simple por estado).
- * `propuestas` (plural) = lista de propuestas del menú; `propuesta` (singular) =
- * detalle de una (la cotización que viene del chat). */
-export type Pantalla = 'inbox' | 'detail' | 'chat' | 'propuestas' | 'propuesta' | 'tareas'
+ * `configuracion` = onboarding post-login para conectar los conectores de la
+ * empresa (correo + gestor de tareas); `propuestas` (plural) = lista de
+ * propuestas del menú; `propuesta` (singular) = detalle de una (la cotización
+ * que viene del chat). */
+export type Pantalla = 'configuracion' | 'inbox' | 'detail' | 'chat' | 'propuestas' | 'propuesta' | 'tareas'
 
 /** Etiqueta corta para el badge de la bandeja. */
 export const ETIQUETA_TIPO: Record<TipoSolicitud, string> = {

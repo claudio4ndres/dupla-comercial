@@ -967,7 +967,91 @@ h1.page {
   margin-top: 20px;
 }
 
+/* ---------- CONFIGURACIÓN · conectores (onboarding) ---------- */
+.conectores {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin-top: 6px;
+}
+.conector {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.conector-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.conector-ico {
+  font-size: 22px;
+  line-height: 1;
+}
+.conector-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.conector-id b {
+  font-family: var(--display);
+  font-size: 15px;
+}
+.conector-cat {
+  font-size: 12px;
+  color: var(--muted);
+}
+.conector-estado {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.conector-estado.on {
+  background: var(--okbg);
+  color: var(--ok);
+}
+.conector-estado.off {
+  background: #f1ead6;
+  color: #8a7a4a;
+}
+.conector-body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+.conector-detalle {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+  margin: 0;
+  flex: 1 1 220px;
+}
+.conector-detalle b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.conector-nota {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+/* Conector aún no disponible (Jira): se ve en gris y no responde al hover. */
+.conector.deshabilitado {
+  opacity: 0.6;
+  filter: grayscale(0.4);
+}
+
 @media (max-width: 860px) {
+  .conectores {
+    grid-template-columns: 1fr;
+  }
   .sidebar {
     position: fixed;
     left: 0;

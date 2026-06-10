@@ -39,7 +39,11 @@ function respuesta(body: unknown, ok = true, status = 200): Response {
 /** Estado de bandeja "sin conectar" que devuelve el backend por defecto. */
 const ESTADO_DESCONECTADO = { proveedor: null, estado: null, casilla: null }
 
-/** Inicia sesión en el demo disparando el flujo real de Supabase (mockeado). */
+/**
+ * Inicia sesión en el demo disparando el flujo real de Supabase (mockeado).
+ * Tras el login, el landing es el onboarding de Configuración (no la bandeja);
+ * los tests que necesitan la bandeja llaman luego a `irABandeja`.
+ */
 async function entrar(user: ReturnType<typeof userEvent.setup>) {
   // Esperar que el login aparezca (App arranca con sesion=undefined, renderiza null
   // hasta que getSession resuelve, luego muestra el login).
@@ -52,6 +56,12 @@ async function entrar(user: ReturnType<typeof userEvent.setup>) {
   await act(async () => {
     authStateCallback?.('SIGNED_IN', { user: { email: 'javier@capsulab.cl' } })
   })
+}
+
+/** Inicia sesión y avanza desde el onboarding a la bandeja ("Continuar a la bandeja ▸"). */
+async function entrarABandeja(user: ReturnType<typeof userEvent.setup>) {
+  await entrar(user)
+  await user.click(await screen.findByRole('button', { name: /continuar a la bandeja/i }))
 }
 
 describe('App (arnés)', () => {
@@ -79,17 +89,26 @@ describe('App (arnés)', () => {
     expect(await screen.findByRole('button', { name: /entrar/i })).toBeInTheDocument()
   })
 
-  it('tras iniciar sesión, muestra la bandeja de solicitudes', async () => {
+  it('tras iniciar sesión, muestra el onboarding de Configuración (no la bandeja)', async () => {
     const user = userEvent.setup()
     render(<App />)
     await entrar(user)
+    // El landing post-login es el onboarding: "Prepara tu espacio".
+    expect(await screen.findByRole('heading', { name: /Prepara tu espacio/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Bandeja de solicitudes/i })).not.toBeInTheDocument()
+  })
+
+  it('desde el onboarding, "Continuar a la bandeja" lleva a la bandeja de solicitudes', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await entrarABandeja(user)
     expect(screen.getByRole('heading', { name: /Bandeja de solicitudes/i })).toBeInTheDocument()
   })
 
   it('mantiene la sesión tras recargar (no rebota al login)', async () => {
     const user = userEvent.setup()
     const { unmount } = render(<App />)
-    await entrar(user)
+    await entrarABandeja(user)
     expect(screen.getByRole('heading', { name: /Bandeja de solicitudes/i })).toBeInTheDocument()
 
     // Simula un refresh: ahora getSession devuelve sesión activa (como haría el
@@ -104,7 +123,8 @@ describe('App (arnés)', () => {
       authStateCallback?.('SIGNED_IN', { user: { email: 'javier@capsulab.cl' } })
     })
 
-    expect(await screen.findByRole('heading', { name: /Bandeja de solicitudes/i })).toBeInTheDocument()
+    // Tras recargar se entra directo a la app (landing = onboarding), sin rebotar al login.
+    expect(await screen.findByRole('heading', { name: /Prepara tu espacio/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /entrar/i })).not.toBeInTheDocument()
   })
 
@@ -155,7 +175,7 @@ describe('App (arnés)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
-    await entrar(user)
+    await entrarABandeja(user)
 
     // Las solicitudes del backend aparecen en la bandeja (llegada asíncrona).
     expect(await screen.findByText(/Carolina Herrera/i)).toBeInTheDocument()
@@ -165,7 +185,7 @@ describe('App (arnés)', () => {
   it('en la bandeja, ofrece conectar un proveedor de correo', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await entrar(user)
+    await entrarABandeja(user)
     // Sin proveedor conectado (estado del backend = null): botones de proveedor.
     expect(screen.getByRole('button', { name: /gmail/i })).toBeInTheDocument()
   })
@@ -183,7 +203,7 @@ describe('App (arnés)', () => {
     const navegar = vi.fn()
 
     render(<App onNavegar={navegar} />)
-    await entrar(user)
+    await entrarABandeja(user)
     await user.click(screen.getByRole('button', { name: /gmail/i }))
 
     // Navega a la URL EXACTA del backend (no se inventa una URL en el cliente).
@@ -232,7 +252,7 @@ describe('App (arnés)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
-    await entrar(user)
+    await entrarABandeja(user)
 
     // Abre la 212CH desde la bandeja → elige Tipo 1 → entra al chat.
     await user.click(await screen.findByText(/Carolina Herrera/i))
@@ -364,7 +384,7 @@ describe('App (arnés)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
-    await entrar(user)
+    await entrarABandeja(user)
     await user.click(await screen.findByText(/Carolina Herrera/i))
     await user.click(screen.getByText(/Tipo 1 · Cotización concreta/i))
     // Envía un mensaje (chip) → Javo responde consultando el Drive.
