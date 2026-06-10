@@ -144,3 +144,24 @@ class PropuestaDetalle(BaseModel):
     estado: str = "borrador"
     componentes: list[ComponentePropuestaSalida] = []
     tareas: list[TareaPropuestaSalida] = []
+
+
+# Lista de propuestas que consume la sección "Propuestas" del front (GET /propuestas).
+# Forma plana: cabecera de la propuesta + `asunto`/`remitente` de la solicitud ligada.
+# NUNCA trae `empresa_id` (CA5): al construirla explícitamente, lo interno queda fuera.
+class PropuestaListada(BaseModel):
+    id: str
+    solicitud_id: str
+    total: float = 0
+    estado: str = "borrador"
+    asunto: str = ""
+    remitente: str = ""
+
+
+# Lista de tareas que consume la sección "Tareas" del front (GET /tareas). Forma plana
+# en español; NUNCA trae `empresa_id` (CA5). El front mapea grupo→área, vencimiento→plazo.
+class TareaListada(BaseModel):
+    nombre: str
+    grupo: str | None = None
+    responsable: str | None = None
+    vencimiento: str | None = None

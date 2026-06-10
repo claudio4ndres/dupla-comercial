@@ -17,6 +17,7 @@ from app.repositorios.conversaciones_supabase import RepositorioConversacionesSu
 from app.repositorios.integraciones_supabase import RepositorioIntegracionesSupabase
 from app.repositorios.propuestas_supabase import RepositorioPropuestasSupabase
 from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
+from app.repositorios.tareas_supabase import RepositorioTareasSupabase
 from app.servicios.busqueda_internet import ProveedorBusquedaCurado
 from app.servicios.cliente_anthropic import ClienteAnthropicHttpx
 from app.servicios.drive_real import FabricaClienteDriveReal
@@ -78,6 +79,20 @@ def obtener_repositorio_propuestas(
     uno en memoria vía `app.dependency_overrides`."""
     settings = obtener_settings()
     return RepositorioPropuestasSupabase(
+        settings.supabase_url,
+        settings.supabase_anon_key,
+        _jwt_del_header(authorization),
+    )
+
+
+def obtener_repositorio_tareas(
+    authorization: str | None = Header(default=None),
+) -> RepositorioTareasSupabase:
+    """Repo real de tareas, construido POR REQUEST con el JWT del usuario para que la
+    RLS liste sólo las tareas de su empresa. En tests se sobrescribe con uno en memoria
+    vía `app.dependency_overrides`."""
+    settings = obtener_settings()
+    return RepositorioTareasSupabase(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),

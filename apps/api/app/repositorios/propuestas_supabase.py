@@ -17,6 +17,7 @@ import httpx
 from app.repositorios.propuestas import (
     ComponentePropuesta,
     Propuesta,
+    PropuestaResumen,
     TareaPropuesta,
 )
 
@@ -28,6 +29,14 @@ _SELECT = (
     "componentes_propuesta(nombre,detalle,proveedor,cantidad,dias,valor_unitario),"
     "tareas(nombre,grupo,responsable,vencimiento),"
     "conversaciones!inner(solicitud_id)"
+)
+
+# `select` para la LISTA: sólo la cabecera de cada propuesta + la solicitud ligada
+# (vía la conversación) para traer `asunto` y `remitente`. NO se pide `empresa_id`
+# (no debe viajar, CA5); la RLS ya restringe a la empresa del JWT.
+_SELECT_LISTA = (
+    "id,total,estado,"
+    "conversaciones!inner(solicitud_id,solicitudes(asunto,remitente))"
 )
 
 
@@ -90,3 +99,30 @@ class RepositorioPropuestasSupabase:
             ],
             tareas=[TareaPropuesta(**t) for t in (fila.get("tareas") or [])],
         )
+
+    async def listar(self, empresa_id: UUID) -> list[PropuestaResumen]:
+        # La RLS ya restringe a la empresa del JWT (regla #2); traemos la cabecera de
+        # cada propuesta con la solicitud embebida (asunto/remitente) en UNA llamada.
+        resp = await self._peticion(
+            "GET",
+            f"/propuestas?select={_SELECT_LISTA}",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        filas = resp.json()
+        resumenes: list[PropuestaResumen] = []
+        for fila in filas:
+            conv = fila.get("conversaciones") or {}
+            sol = conv.get("solicitudes") or {}
+            resumenes.append(
+                PropuestaResumen(
+                    id=fila["id"],
+                    empresa_id=empresa_id,
+                    solicitud_id=conv.get("solicitud_id"),
+                    total=fila.get("total", 0) or 0,
+                    estado=fila.get("estado", "borrador"),
+                    asunto=sol.get("asunto") or "",
+                    remitente=sol.get("remitente") or "",
+                )
+            )
+        return resumenes
