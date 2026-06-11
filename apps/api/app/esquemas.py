@@ -59,6 +59,14 @@ class ResumenPoller(BaseModel):
     solicitudes_creadas: int
 
 
+class ResumenReproceso(BaseModel):
+    """Resumen de una corrida del reproceso: cuántas solicitudes 'sin_clasificar' se
+    revisaron y cuántas quedaron clasificadas (con descripción)."""
+
+    revisadas: int
+    reclasificadas: int
+
+
 # Conversación con Javo (003) ------------------------------------------------
 # El front usa `t1`/`t2` (tipo confirmado en pantalla), distinto del `tipo_1`/
 # `tipo_2` que persiste el clasificador. Se mantienen separados a propósito.

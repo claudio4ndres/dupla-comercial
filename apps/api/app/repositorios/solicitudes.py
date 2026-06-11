@@ -52,6 +52,18 @@ class RepositorioSolicitudes(Protocol):
 
     async def listar(self, empresa_id: UUID) -> list[Solicitud]: ...
 
+    async def listar_sin_clasificar(self, empresa_id: UUID) -> list[Solicitud]: ...
+
+    async def actualizar_reproceso(
+        self,
+        solicitud_id: UUID,
+        empresa_id: UUID,
+        *,
+        cuerpo: str,
+        resumen: str | None,
+        tipo: str,
+    ) -> Solicitud: ...
+
 
 class RepositorioSolicitudesEnMemoria:
     """Implementación en memoria para tests. Emula el aislamiento por empresa de la
@@ -126,3 +138,34 @@ class RepositorioSolicitudesEnMemoria:
         reordenar para mostrar; aquí no inventamos un criterio sin timestamp.
         """
         return [s for s in self._por_id.values() if s.empresa_id == empresa_id]
+
+    async def listar_sin_clasificar(self, empresa_id: UUID) -> list[Solicitud]:
+        """Las solicitudes de la empresa que quedaron 'sin_clasificar' (p. ej. correos
+        ingeridos antes del fix, o un sync donde Haiku falló). El reproceso las re-baja
+        y re-clasifica."""
+        return [
+            s
+            for s in self._por_id.values()
+            if s.empresa_id == empresa_id and s.tipo == "sin_clasificar"
+        ]
+
+    async def actualizar_reproceso(
+        self,
+        solicitud_id: UUID,
+        empresa_id: UUID,
+        *,
+        cuerpo: str,
+        resumen: str | None,
+        tipo: str,
+    ) -> Solicitud:
+        """Actualiza cuerpo + resumen + tipo de una solicitud ya existente (reproceso),
+        sin tocar su estado. El cuerpo se actualiza porque al re-bajar se recupera el
+        texto (p. ej. de un correo solo-HTML que entró vacío)."""
+        solicitud = await self.obtener(solicitud_id, empresa_id)
+        if solicitud is None:
+            raise KeyError(solicitud_id)
+        actualizada = solicitud.model_copy(
+            update={"cuerpo": cuerpo, "resumen": resumen, "tipo": tipo}
+        )
+        self._por_id[solicitud_id] = actualizada
+        return actualizada

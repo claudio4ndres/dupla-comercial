@@ -41,6 +41,14 @@ class ClienteGmail(Protocol):
         """
         ...
 
+    async def obtener_mensaje(self, gmail_msg_id: str) -> MensajeCorreo | None:
+        """Re-baja UN mensaje por su id. Sirve para RE-PROCESAR correos ya ingeridos:
+        el cuerpo se re-extrae con el parser actual (incluye el fallback a HTML), así
+        un correo que entró con cuerpo vacío recupera su contenido. `None` si el
+        mensaje ya no existe; auth fallida → `ErrorAutenticacionGmail`.
+        """
+        ...
+
 
 class FabricaClienteGmail(Protocol):
     """Construye el `ClienteGmail` de UNA integración. La implementación real resuelve

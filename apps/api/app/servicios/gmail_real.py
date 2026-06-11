@@ -173,6 +173,18 @@ class ClienteGmailReal:
             if self._cliente is None:
                 await http.aclose()
 
+    async def obtener_mensaje(self, gmail_msg_id: str) -> MensajeCorreo | None:
+        """Re-baja UN mensaje por id (re-procesar): re-extrae el cuerpo con el parser
+        actual (incluye el fallback a HTML). Auth fallida → ErrorAutenticacionGmail."""
+        http = self._http()
+        try:
+            token = await self._access_token(http)
+            cabeceras = {"Authorization": f"Bearer {token}"}
+            return await self._obtener_mensaje(http, gmail_msg_id, cabeceras)
+        finally:
+            if self._cliente is None:
+                await http.aclose()
+
     async def _ids_por_historial(
         self, http: httpx.AsyncClient, cursor: str, cabeceras: dict
     ) -> tuple[list[str], str | None]:

@@ -17,9 +17,10 @@ from app.dependencias import (
     obtener_repositorio_solicitudes_servicio,
     obtener_secreto_poller,
 )
-from app.esquemas import ResumenPoller
+from app.esquemas import ResumenPoller, ResumenReproceso
 from app.servicios.clasificador import clasificar_solicitud
 from app.servicios.ingesta_correo import ingerir_correos_nuevos
+from app.servicios.reprocesar import reprocesar_sin_clasificar
 
 router = APIRouter(prefix="/interno", tags=["interno"])
 
@@ -84,3 +85,44 @@ async def poller_correo(
         empresas_procesadas=empresas_procesadas,
         solicitudes_creadas=solicitudes_creadas,
     )
+
+
+@router.post("/reprocesar/correo", response_model=ResumenReproceso)
+async def reprocesar_correo(
+    repo_integraciones=Depends(obtener_repositorio_integraciones_servicio),
+    repo_solicitudes=Depends(obtener_repositorio_solicitudes_servicio),
+    fabrica_gmail=Depends(obtener_fabrica_cliente_gmail),
+    cliente_anthropic=Depends(obtener_cliente_anthropic),
+    _=Depends(verificar_credencial_servicio),
+) -> ResumenReproceso:
+    """Re-baja y re-clasifica las solicitudes 'sin_clasificar' de todas las casillas
+    gmail conectadas. Sirve para correos ingeridos ANTES del fix de clasificación (sin
+    descripción) o donde Haiku se cayó. Idempotente y re-corrible; aísla por empresa."""
+
+    async def clasificar(cuerpo: str):
+        return await clasificar_solicitud(cuerpo, cliente_anthropic)
+
+    integraciones = await repo_integraciones.listar_por_proveedor("gmail")
+    revisadas = 0
+    reclasificadas = 0
+    for integracion in integraciones:
+        try:
+            gmail = fabrica_gmail.crear(integracion)
+            res = await reprocesar_sin_clasificar(
+                integracion,
+                gmail,
+                repo_solicitudes,
+                repo_integraciones,
+                clasificar,
+            )
+            revisadas += res.revisadas
+            reclasificadas += res.reclasificadas
+        except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
+            _LOG.exception(
+                "Reproceso: la empresa %s falló; se sigue con las demás.",
+                integracion.empresa_id,
+            )
+            await repo_integraciones.marcar_estado(
+                integracion.empresa_id, "reconectar"
+            )
+    return ResumenReproceso(revisadas=revisadas, reclasificadas=reclasificadas)

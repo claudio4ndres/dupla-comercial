@@ -146,6 +146,18 @@ class ClienteGmailFake:
         self.llamadas.append(cursor)
         return list(self._mensajes), self._nuevo_cursor
 
+    async def obtener_mensaje(self, gmail_msg_id: str) -> MensajeCorreo | None:
+        # Re-baja un mensaje por id: si está en la lista lo devuelve; si no, uno con
+        # cuerpo "recuperado" (simula el re-fetch con el fallback a HTML).
+        for m in self._mensajes:
+            if m.gmail_msg_id == gmail_msg_id:
+                return m
+        return MensajeCorreo(
+            gmail_msg_id=gmail_msg_id,
+            asunto="Correo re-bajado",
+            cuerpo="Cuerpo recuperado del HTML al re-procesar.",
+        )
+
 
 class ClienteGmailQueFallaAuth:
     """Doble que simula un refresh token expirado/revocado: al leer lanza
@@ -156,6 +168,10 @@ class ClienteGmailQueFallaAuth:
 
     async def listar_nuevos(self, cursor: str | None):
         self.llamadas.append(cursor)
+        raise ErrorAutenticacionGmail("refresh token expirado/revocado (simulado)")
+
+    async def obtener_mensaje(self, gmail_msg_id: str):
+        self.llamadas.append(gmail_msg_id)
         raise ErrorAutenticacionGmail("refresh token expirado/revocado (simulado)")
 
 

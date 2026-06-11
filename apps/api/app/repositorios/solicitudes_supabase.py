@@ -76,6 +76,39 @@ class RepositorioSolicitudesSupabase:
         resp.raise_for_status()
         return [Solicitud(**fila) for fila in resp.json()]
 
+    async def listar_sin_clasificar(self, empresa_id: UUID) -> list[Solicitud]:
+        # El reproceso corre con service-role (sin RLS), así que filtramos por
+        # `empresa_id` EXPLÍCITO para no cruzar tenants (regla #2 a mano).
+        resp = await self._peticion(
+            "GET",
+            f"/solicitudes?tipo=eq.sin_clasificar&empresa_id=eq.{empresa_id}&select=*",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return [Solicitud(**fila) for fila in resp.json()]
+
+    async def actualizar_reproceso(
+        self,
+        solicitud_id: UUID,
+        empresa_id: UUID,
+        *,
+        cuerpo: str,
+        resumen: str | None,
+        tipo: str,
+    ) -> Solicitud:
+        # service-role: filtramos por id Y empresa_id (sin RLS que nos respalde).
+        resp = await self._peticion(
+            "PATCH",
+            f"/solicitudes?id=eq.{solicitud_id}&empresa_id=eq.{empresa_id}",
+            headers=self._headers({"Prefer": "return=representation"}),
+            json={"cuerpo": cuerpo, "resumen": resumen, "tipo": tipo},
+        )
+        resp.raise_for_status()
+        filas = resp.json()
+        if not filas:
+            raise KeyError(solicitud_id)
+        return Solicitud(**filas[0])
+
     async def guardar_clasificacion(
         self, solicitud_id: UUID, empresa_id: UUID, resumen: str, tipo: str
     ) -> Solicitud:
