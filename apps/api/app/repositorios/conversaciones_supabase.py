@@ -117,6 +117,13 @@ class RepositorioConversacionesSupabase:
         resp.raise_for_status()
         return resp.json()[0]["id"]
 
+    async def obtener_o_crear_conversacion(
+        self, solicitud_id: UUID, empresa_id: UUID, tipo: str
+    ) -> UUID:
+        """Versión pública de `_id_conversacion`: la usa el write-path de propuestas
+        para ligar la propuesta a la conversación de la solicitud."""
+        return UUID(await self._id_conversacion(solicitud_id, empresa_id, tipo))
+
     async def guardar_turnos(
         self,
         solicitud_id: UUID,

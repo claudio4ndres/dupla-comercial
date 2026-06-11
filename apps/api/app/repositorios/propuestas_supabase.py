@@ -19,6 +19,7 @@ from app.repositorios.propuestas import (
     Propuesta,
     PropuestaResumen,
     TareaPropuesta,
+    _total_de,
 )
 
 # `select` con embedding: la propuesta + sus hijos + la conversación (sólo para
@@ -98,6 +99,81 @@ class RepositorioPropuestasSupabase:
                 ComponentePropuesta(**c) for c in (fila.get("componentes_propuesta") or [])
             ],
             tareas=[TareaPropuesta(**t) for t in (fila.get("tareas") or [])],
+        )
+
+    async def crear(
+        self,
+        empresa_id: UUID,
+        solicitud_id: UUID,
+        conversacion_id: UUID,
+        componentes: list[ComponentePropuesta],
+        tareas: list[TareaPropuesta],
+    ) -> Propuesta:
+        """Persiste la propuesta que armó Javo: cabecera + componentes + tareas, todo
+        ligado a la conversación de la solicitud (propuesta→conversacion→solicitud).
+        La RLS exige `empresa_id` = empresa del JWT (regla #2)."""
+        total = _total_de(componentes)
+        # 1. Cabecera de la propuesta.
+        resp = await self._peticion(
+            "POST",
+            "/propuestas",
+            headers={**self._headers(), "Prefer": "return=representation"},
+            json={
+                "empresa_id": str(empresa_id),
+                "conversacion_id": str(conversacion_id),
+                "total": total,
+                "estado": "borrador",
+            },
+        )
+        resp.raise_for_status()
+        propuesta_id = resp.json()[0]["id"]
+        # 2. Componentes valorizados (un POST con el array).
+        if componentes:
+            r2 = await self._peticion(
+                "POST",
+                "/componentes_propuesta",
+                headers=self._headers(),
+                json=[
+                    {
+                        "propuesta_id": propuesta_id,
+                        "nombre": c.nombre,
+                        "detalle": c.detalle,
+                        "proveedor": c.proveedor,
+                        "cantidad": c.cantidad,
+                        "dias": c.dias,
+                        "valor_unitario": c.valor_unitario,
+                    }
+                    for c in componentes
+                ],
+            )
+            r2.raise_for_status()
+        # 3. Tareas de ejecución (llevan empresa_id propio + propuesta_id).
+        if tareas:
+            r3 = await self._peticion(
+                "POST",
+                "/tareas",
+                headers=self._headers(),
+                json=[
+                    {
+                        "empresa_id": str(empresa_id),
+                        "propuesta_id": propuesta_id,
+                        "nombre": t.nombre,
+                        "grupo": t.grupo,
+                        "responsable": t.responsable,
+                        "vencimiento": t.vencimiento,
+                    }
+                    for t in tareas
+                ],
+            )
+            r3.raise_for_status()
+        return Propuesta(
+            id=propuesta_id,
+            empresa_id=empresa_id,
+            solicitud_id=solicitud_id,
+            total=total,
+            estado="borrador",
+            componentes=componentes,
+            tareas=tareas,
         )
 
     async def listar(self, empresa_id: UUID) -> list[PropuestaResumen]:

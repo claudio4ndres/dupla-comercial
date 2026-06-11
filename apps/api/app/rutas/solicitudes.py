@@ -8,11 +8,13 @@ from app.dependencias import (
     obtener_cliente_anthropic,
     obtener_cliente_clickup,
     obtener_empresa_actual,
+    obtener_repositorio_conversaciones,
     obtener_repositorio_propuestas,
     obtener_repositorio_solicitudes,
 )
 from app.esquemas import (
     ComponentePropuestaSalida,
+    CrearPropuestaEntrada,
     EnvioClickUpEntrada,
     PropuestaDetalle,
     ResultadoClasificacion,
@@ -20,6 +22,7 @@ from app.esquemas import (
     SolicitudListada,
     TareaPropuestaSalida,
 )
+from app.repositorios.propuestas import ComponentePropuesta, TareaPropuesta
 from app.servicios.clasificador import clasificar_solicitud
 from app.servicios.exportador_excel import (
     LineaCotizacion,
@@ -114,6 +117,57 @@ async def obtener_propuesta(
     propuesta = await repo.obtener_por_solicitud(solicitud_id, empresa_id)
     if propuesta is None:
         raise HTTPException(status_code=404, detail="La solicitud no tiene propuesta")
+    return PropuestaDetalle(
+        id=str(propuesta.id),
+        total=propuesta.total,
+        estado=propuesta.estado,
+        componentes=[
+            ComponentePropuestaSalida(**c.model_dump()) for c in propuesta.componentes
+        ],
+        tareas=[TareaPropuestaSalida(**t.model_dump()) for t in propuesta.tareas],
+    )
+
+
+@router.post("/{solicitud_id}/propuesta", response_model=PropuestaDetalle)
+async def crear_propuesta(
+    solicitud_id: UUID,
+    cuerpo: CrearPropuestaEntrada,
+    repo=Depends(obtener_repositorio_propuestas),
+    repo_conv=Depends(obtener_repositorio_conversaciones),
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+) -> PropuestaDetalle:
+    """Persiste la propuesta que Javo armó en el chat (componentes valorizados +
+    tareas de ejecución), ligada a la conversación de la solicitud. La devuelve para
+    que las pantallas Propuesta/Tareas y los exports (Excel/PPT/ClickUp) la usen.
+
+    Antes esto NO existía: 'Generar propuesta' sólo hacía GET → 404 con datos reales
+    (sólo funcionaba la demo sembrada). Ahora la conversación SÍ baja a propuesta."""
+    conversacion_id = await repo_conv.obtener_o_crear_conversacion(
+        solicitud_id, empresa_id, cuerpo.tipo
+    )
+    componentes = [
+        ComponentePropuesta(
+            nombre=c.nombre,
+            detalle=c.detalle,
+            proveedor=c.proveedor,
+            cantidad=c.cantidad,
+            dias=c.dias or 1,
+            valor_unitario=c.valor_unitario or 0,
+        )
+        for c in cuerpo.componentes
+    ]
+    tareas = [
+        TareaPropuesta(
+            nombre=t.nombre,
+            grupo=t.area,
+            responsable=t.responsable,
+            vencimiento=t.plazo,
+        )
+        for t in cuerpo.tareas
+    ]
+    propuesta = await repo.crear(
+        empresa_id, solicitud_id, conversacion_id, componentes, tareas
+    )
     return PropuestaDetalle(
         id=str(propuesta.id),
         total=propuesta.total,

@@ -10,6 +10,7 @@ from app.repositorios.integraciones import (
     Integracion,
     RepositorioIntegracionesEnMemoria,
 )
+from app.esquemas import ResultadoClasificacion
 from app.repositorios.solicitudes import RepositorioSolicitudesEnMemoria, Solicitud
 from app.servicios.gmail import MensajeCorreo
 from app.servicios.ingesta_correo import ingerir_correos_nuevos
@@ -102,3 +103,48 @@ async def test_no_duplica_un_correo_ya_ingerido():
 
     assert resultado.creadas == 1  # solo m2 es nuevo; m1 ya estaba
     assert len(repo_sol._por_id) == 2  # la previa + la nueva (m2)
+
+
+async def test_ingiere_clasificando_resumen_y_tipo():
+    # El poller debe clasificar cada correo (Haiku) y guardar `resumen` + `tipo`,
+    # para que el detalle muestre una descripción real (no quede vacío). Esta es la
+    # brecha que dejaba los correos reales "sin descripción".
+    integ = _integracion()
+    repo_sol = RepositorioSolicitudesEnMemoria()
+    repo_int = RepositorioIntegracionesEnMemoria([integ])
+    gmail = ClienteGmailFake([_mensaje("m1")])
+
+    async def clasificar_fake(cuerpo: str) -> ResultadoClasificacion:
+        assert "sopaipillas" in cuerpo  # clasifica sobre el CUERPO del correo
+        return ResultadoClasificacion(
+            resumen="Sampling de sopaipillas afuera del Metro.", tipo="tipo_1"
+        )
+
+    await ingerir_correos_nuevos(
+        integ, gmail, repo_sol, repo_int, clasificar=clasificar_fake
+    )
+
+    s = next(iter(repo_sol._por_id.values()))
+    assert s.resumen == "Sampling de sopaipillas afuera del Metro."
+    assert s.tipo == "tipo_1"
+
+
+async def test_si_la_clasificacion_falla_igual_ingiere_sin_resumen():
+    # Resiliencia: si el LLM se cae, el correo igual se ingiere ('sin_clasificar',
+    # sin resumen) para no PERDER correos por una falla del clasificador.
+    integ = _integracion()
+    repo_sol = RepositorioSolicitudesEnMemoria()
+    repo_int = RepositorioIntegracionesEnMemoria([integ])
+    gmail = ClienteGmailFake([_mensaje("m1")])
+
+    async def clasificar_explota(cuerpo: str) -> ResultadoClasificacion:
+        raise RuntimeError("LLM caído")
+
+    resultado = await ingerir_correos_nuevos(
+        integ, gmail, repo_sol, repo_int, clasificar=clasificar_explota
+    )
+
+    assert resultado.creadas == 1
+    s = next(iter(repo_sol._por_id.values()))
+    assert s.tipo == "sin_clasificar"
+    assert not s.resumen  # None o ""

@@ -42,7 +42,12 @@ class RepositorioSolicitudes(Protocol):
     ) -> Solicitud: ...
 
     async def crear_desde_correo(
-        self, empresa_id: UUID, mensaje: "MensajeCorreo"
+        self,
+        empresa_id: UUID,
+        mensaje: "MensajeCorreo",
+        *,
+        resumen: str | None = None,
+        tipo: str = "sin_clasificar",
     ) -> bool: ...
 
     async def listar(self, empresa_id: UUID) -> list[Solicitud]: ...
@@ -82,9 +87,15 @@ class RepositorioSolicitudesEnMemoria:
         return actualizada
 
     async def crear_desde_correo(
-        self, empresa_id: UUID, mensaje: "MensajeCorreo"
+        self,
+        empresa_id: UUID,
+        mensaje: "MensajeCorreo",
+        *,
+        resumen: str | None = None,
+        tipo: str = "sin_clasificar",
     ) -> bool:
-        """Crea una `solicitud` (`sin_clasificar` / `nueva`) a partir de un correo.
+        """Crea una `solicitud` (`nueva`) a partir de un correo, con el `resumen` y
+        `tipo` que entregó el clasificador (si lo hubo; si no, `sin_clasificar`).
 
         Devuelve True si la creó, False si el mensaje ya estaba ingerido (mismo
         `gmail_msg_id` en la misma empresa): así el poller cuenta solo las nuevas.
@@ -101,7 +112,8 @@ class RepositorioSolicitudesEnMemoria:
             asunto=mensaje.asunto,
             cuerpo=mensaje.cuerpo,
             gmail_msg_id=mensaje.gmail_msg_id,
-            tipo="sin_clasificar",
+            resumen=resumen,
+            tipo=tipo,
             estado="nueva",
         )
         self._por_id[solicitud.id] = solicitud

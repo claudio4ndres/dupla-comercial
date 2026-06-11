@@ -7,9 +7,16 @@ componentes valorizados y sus tareas. La implementación real contra Supabase
 (que respeta la RLS con el JWT del usuario) vive en `propuestas_supabase.py`.
 """
 from typing import Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel
+
+
+def _total_de(componentes: "list[ComponentePropuesta]") -> float:
+    """Costo total de la cotización: Σ cantidad × días × valor_unitario (T17)."""
+    return sum(
+        c.cantidad * (c.dias or 1) * (c.valor_unitario or 0) for c in componentes
+    )
 
 
 class ComponentePropuesta(BaseModel):
@@ -72,6 +79,15 @@ class RepositorioPropuestas(Protocol):
         self, solicitud_id: UUID, empresa_id: UUID
     ) -> Propuesta | None: ...
 
+    async def crear(
+        self,
+        empresa_id: UUID,
+        solicitud_id: UUID,
+        conversacion_id: UUID,
+        componentes: list[ComponentePropuesta],
+        tareas: list[TareaPropuesta],
+    ) -> Propuesta: ...
+
     async def listar(self, empresa_id: UUID) -> list[PropuestaResumen]: ...
 
 
@@ -107,6 +123,35 @@ class RepositorioPropuestasEnMemoria:
         self, solicitud_id: UUID, empresa_id: UUID
     ) -> Propuesta | None:
         return self._por_clave.get((empresa_id, solicitud_id))
+
+    async def crear(
+        self,
+        empresa_id: UUID,
+        solicitud_id: UUID,
+        conversacion_id: UUID,
+        componentes: list[ComponentePropuesta],
+        tareas: list[TareaPropuesta],
+    ) -> Propuesta:
+        propuesta = Propuesta(
+            id=uuid4(),
+            empresa_id=empresa_id,
+            solicitud_id=solicitud_id,
+            total=_total_de(componentes),
+            estado="borrador",
+            componentes=componentes,
+            tareas=tareas,
+        )
+        self._por_clave[(empresa_id, solicitud_id)] = propuesta
+        self._resumenes.append(
+            PropuestaResumen(
+                id=propuesta.id,
+                empresa_id=empresa_id,
+                solicitud_id=solicitud_id,
+                total=propuesta.total,
+                estado=propuesta.estado,
+            )
+        )
+        return propuesta
 
     async def listar(self, empresa_id: UUID) -> list[PropuestaResumen]:
         # Sólo las de la empresa consultada (emula la RLS).

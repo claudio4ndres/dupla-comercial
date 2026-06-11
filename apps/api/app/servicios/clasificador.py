@@ -47,6 +47,11 @@ async def clasificar_solicitud(cuerpo: str, cliente) -> ResultadoClasificacion:
 
     `cliente` es un `AsyncAnthropic` (o un doble de prueba con la misma interfaz).
     """
+    if not (cuerpo or "").strip():
+        # Sin contenido que clasificar (p. ej. correo sin cuerpo): no gastamos una
+        # llamada y evitamos el 400 de la API por mensaje vacío. La ingesta captura
+        # esto y deja el correo 'sin_clasificar' sin caerse.
+        raise ValueError("cuerpo vacío: nada que clasificar")
     respuesta = await cliente.messages.create(
         model=MODELO_CLASIFICADOR,
         max_tokens=512,

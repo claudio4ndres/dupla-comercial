@@ -1,0 +1,20 @@
+# Mantiene el contexto de build chico y, sobre todo, EVITA filtrar secretos a la
+# imagen. node_modules y dist se regeneran dentro del build (npm ci / vite build).
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+**/dist
+# Secretos / entorno — nunca van a la imagen.
+**/.env
+**/.env.*
+!**/.env.example
+**/.secretos.local.json
+# Ruido que no aporta al build.
+.git
+.claude
+specs
+memory
+apps/web/test-results
+apps/web/playwright-report
+apps/web/e2e

@@ -18,7 +18,12 @@ import {
   type EstadoCorreo,
 } from './api/integraciones'
 import { obtenerSolicitudes } from './api/solicitudes'
-import { listarPropuestas, obtenerPropuesta, type PropuestaResumen } from './api/propuestas'
+import {
+  guardarPropuesta,
+  listarPropuestas,
+  obtenerPropuesta,
+  type PropuestaResumen,
+} from './api/propuestas'
 import { listarTareas } from './api/tareas'
 import { descargarCotizacionExcel, descargarCotizacionPpt } from './api/exportaciones'
 import { obtenerRecursosDrive } from './api/recursos'
@@ -265,18 +270,23 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     // sus fuentes (005). Pueblan el panel lateral del chat; el GP los confirma y, al
     // "Generar propuesta", pasan a la cotización (spec 004). No se persisten aquí.
     if (r.componentes.length) setComponentes(r.componentes)
+    if (r.tareas.length) setTareas(r.tareas)
     if (r.fuentes.length) setFuentes(r.fuentes)
   }
 
   async function generarPropuesta() {
     if (!solicitudActual) return
-    // La cotización es REAL: la pide al backend (componentes valorizados + tareas).
-    // Sin propuesta (404) o backend caído, deja los datos como están (la pantalla
-    // muestra su estado vacío si no hay componentes).
-    const prop = await obtenerPropuesta(solicitudActual.id)
-    if (prop) {
-      setComponentes(prop.componentes)
-      setTareas(prop.tareas)
+    // PERSISTE lo que Javo armó en el chat (componentes + tareas) y muestra lo guardado.
+    // Si la conversación no propuso nada (componentes/tareas vacíos), intenta leer una
+    // propuesta previa. Antes esto solo hacía GET → 404 con datos reales y se perdía
+    // todo lo construido en el chat.
+    const guardada =
+      componentes.length || tareas.length
+        ? await guardarPropuesta(solicitudActual.id, tipo, componentes, tareas)
+        : await obtenerPropuesta(solicitudActual.id)
+    if (guardada) {
+      setComponentes(guardada.componentes)
+      setTareas(guardada.tareas)
     }
     irA('propuesta')
   }

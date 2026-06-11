@@ -92,11 +92,17 @@ class RepositorioSolicitudesSupabase:
         return Solicitud(**filas[0])
 
     async def crear_desde_correo(
-        self, empresa_id: UUID, mensaje: MensajeCorreo
+        self,
+        empresa_id: UUID,
+        mensaje: MensajeCorreo,
+        *,
+        resumen: str | None = None,
+        tipo: str = "sin_clasificar",
     ) -> bool:
         """Inserta una solicitud desde un correo, idempotente por el índice único
         parcial `(empresa_id, gmail_msg_id)`. `resolution=ignore-duplicates` hace
-        que un duplicado no falle y devuelva sin filas → `False`."""
+        que un duplicado no falle y devuelva sin filas → `False`. `resumen`/`tipo`
+        vienen del clasificador (si corrió); si no, queda 'sin_clasificar'."""
         resp = await self._peticion(
             "POST",
             "/solicitudes",
@@ -110,7 +116,8 @@ class RepositorioSolicitudesSupabase:
                 "correo_origen": mensaje.correo_origen,
                 "asunto": mensaje.asunto,
                 "cuerpo": mensaje.cuerpo,
-                "tipo": "sin_clasificar",
+                "resumen": resumen,
+                "tipo": tipo,
                 "estado": "nueva",
             },
         )

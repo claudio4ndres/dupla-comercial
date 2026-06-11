@@ -37,7 +37,14 @@ export function DetalleSolicitud({ solicitud, onVolver, onElegirTipo }: Props) {
               </svg>
               Resumen del correo
             </div>
-            <p>{solicitud.resumen}</p>
+            {/* Si Javo aún no resumió el correo (p. ej. ingerido sin clasificar),
+                mostramos un preview del cuerpo para que nunca quede vacío. */}
+            <p>
+              {solicitud.resumen ||
+                ((solicitud.cuerpo ?? '').trim().slice(0, 400) +
+                  ((solicitud.cuerpo ?? '').trim().length > 400 ? '…' : '')) ||
+                'Sin contenido.'}
+            </p>
             <ul>
               {solicitud.puntos.map((p, i) => (
                 <li key={i}>{p}</li>

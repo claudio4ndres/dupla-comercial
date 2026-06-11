@@ -10,7 +10,7 @@ implementación real en `conversaciones_supabase.py`, no este doble.
 from datetime import datetime, timedelta, timezone
 from itertools import count
 from typing import Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 
@@ -40,6 +40,10 @@ class RepositorioConversaciones(Protocol):
         nuevos: list[dict],
     ) -> None: ...
 
+    async def obtener_o_crear_conversacion(
+        self, solicitud_id: UUID, empresa_id: UUID, tipo: str
+    ) -> UUID: ...
+
 
 class RepositorioConversacionesEnMemoria:
     """Doble en memoria para tests. Emula el aislamiento por empresa de la RLS:
@@ -51,6 +55,8 @@ class RepositorioConversacionesEnMemoria:
         # Secuencia monótona para fijar `creado_en` estrictamente creciente: así dos
         # mensajes guardados en el mismo instante conservan su orden de inserción.
         self._secuencia = count()
+        # Id de la conversación por (empresa, solicitud) — find-or-create en memoria.
+        self._ids: dict[tuple[UUID, UUID], UUID] = {}
 
     async def obtener_mensajes(
         self, solicitud_id: UUID, empresa_id: UUID
@@ -58,6 +64,14 @@ class RepositorioConversacionesEnMemoria:
         mensajes = self._por_clave.get((empresa_id, solicitud_id), [])
         # Orden cronológico estable (emula `order=creado_en` de PostgREST).
         return sorted(mensajes, key=lambda m: m.creado_en)
+
+    async def obtener_o_crear_conversacion(
+        self, solicitud_id: UUID, empresa_id: UUID, tipo: str
+    ) -> UUID:
+        clave = (empresa_id, solicitud_id)
+        if clave not in self._ids:
+            self._ids[clave] = uuid4()
+        return self._ids[clave]
 
     async def guardar_turnos(
         self,

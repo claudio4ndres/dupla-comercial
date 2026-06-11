@@ -17,7 +17,11 @@ import httpx
 
 from app.repositorios.integraciones import Integracion
 from app.servicios.gmail import ErrorAutenticacionGmail, MensajeCorreo
-from app.servicios.gmail_real import ClienteGmailReal, FabricaClienteGmailReal
+from app.servicios.gmail_real import (
+    ClienteGmailReal,
+    FabricaClienteGmailReal,
+    _a_mensaje,
+)
 from app.servicios.secretos import AlmacenSecretosEnMemoria
 
 CLIENT_ID = "client-id-de-prueba"
@@ -168,6 +172,103 @@ async def test_con_cursor_usa_history_list_y_mapea_los_mensajes():
     hist_req = next(r for r in registro if r.url.path.endswith("/history"))
     assert hist_req.headers["authorization"] == "Bearer ya29.token-fresco"
     assert hist_req.url.params["startHistoryId"] == "500"
+
+
+# --- Robustez (auditoría) ----------------------------------------------------
+
+async def test_history_404_resincroniza_desde_cero_sin_reventar():
+    # Auditoría #8: si el historyId caducó, Gmail responde 404. En vez de tumbar el
+    # poller con 500, re-sincronizamos desde cero (fallback inicial) y fijamos cursor.
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    mensajes = {"msg-x": _mensaje_texto_plano("msg-x", "A <a@x.cl>", "Hola", "cuerpo")}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        registro.append(req)
+        path = req.url.path
+        if path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3599,
+                                             "token_type": "Bearer"})
+        if path.endswith("/history"):
+            return httpx.Response(404, json={"error": {"code": 404}})  # historyId viejo
+        if path.endswith("/profile"):
+            return httpx.Response(200, json={"emailAddress": "x@y.cl", "historyId": "888"})
+        if path.endswith("/messages"):
+            return httpx.Response(200, json={"messages": [{"id": "msg-x"}]})
+        return httpx.Response(200, json=mensajes[path.rsplit("/", 1)[1]])
+
+    cliente = ClienteGmailReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(handler),
+    )
+
+    msgs, nuevo_cursor = await cliente.listar_nuevos("123")  # cursor viejo → 404
+
+    assert [m.gmail_msg_id for m in msgs] == ["msg-x"]  # re-sync trajo los iniciales
+    assert nuevo_cursor == "888"  # cursor nuevo desde el profile (no reventó)
+
+
+async def test_primer_sync_pagina_con_next_page_token():
+    # Auditoría #9: el primer sync PAGINA (antes solo traía la primera página de 50).
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    mensajes = {
+        f"m{i}": _mensaje_texto_plano(f"m{i}", "A <a@x.cl>", "s", "c") for i in range(3)
+    }
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        registro.append(req)
+        path = req.url.path
+        if path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3599,
+                                             "token_type": "Bearer"})
+        if path.endswith("/profile"):
+            return httpx.Response(200, json={"emailAddress": "x@y.cl", "historyId": "999"})
+        if path.endswith("/messages"):
+            if "pageToken" in req.url.params:  # página 2: sin nextPageToken → fin
+                return httpx.Response(200, json={"messages": [{"id": "m2"}]})
+            return httpx.Response(200, json={"messages": [{"id": "m0"}, {"id": "m1"}],
+                                             "nextPageToken": "PAG2"})
+        return httpx.Response(200, json=mensajes[path.rsplit("/", 1)[1]])
+
+    cliente = ClienteGmailReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(handler),
+    )
+
+    msgs, _ = await cliente.listar_nuevos(None)  # sin cursor → primer sync
+
+    assert [m.gmail_msg_id for m in msgs] == ["m0", "m1", "m2"]  # trajo AMBAS páginas
+
+
+def test_correo_solo_html_cae_al_html_y_no_queda_vacio():
+    # Correos solo-HTML (Uber, newsletters) NO traen text/plain. Antes el cuerpo
+    # quedaba vacío → la clasificación fallaba con 400 (mensaje vacío). Ahora cae al
+    # text/html limpiado, así Javo sí puede clasificarlo.
+    datos = {
+        "id": "msg-html",
+        "payload": {
+            "mimeType": "text/html",
+            "headers": [
+                {"name": "From", "value": "Uber <no-reply@uber.com>"},
+                {"name": "Subject", "value": "Tu viaje del viernes"},
+            ],
+            "body": {
+                "data": _b64url(
+                    "<html><head><style>p{color:red}</style></head>"
+                    "<body><p>Gracias por tu viaje</p><b>$5.000</b></body></html>"
+                )
+            },
+        },
+    }
+
+    m = _a_mensaje(datos)
+
+    assert m.asunto == "Tu viaje del viernes"
+    assert m.cuerpo == "Gracias por tu viaje $5.000"  # sin tags, sin <style>, limpio
+    assert m.cuerpo.strip() != ""  # ya no es vacío → no más 400
 
 
 # --- Camino sin cursor: fallback `after:` + cursor desde el historyId actual --

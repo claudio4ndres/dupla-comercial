@@ -93,7 +93,9 @@ class ComponentePropuesto(BaseModel):
     nombre: str
     detalle: str | None = None
     cantidad: int = 1
+    dias: int | None = None  # tarifa POR DÍA × días (si aplica); si no, 1 día
     valor_unitario: float | None = None
+    proveedor: str | None = None  # proveedor del catálogo del Drive
     origen: str | None = None  # recurso del Drive de donde salió el valor
 
 
@@ -104,16 +106,36 @@ class Fuente(BaseModel):
     referencia: str
 
 
+class TareaPropuesta(BaseModel):
+    """Una tarea de EJECUCIÓN que Javo propone en el chat (la decide con criterio de
+    comercial senior). El gestor la confirma; al generar la propuesta se persiste."""
+
+    nombre: str
+    area: str  # RRHH, Producción, Compras, Diseño, Logística, Comercial, Coordinación…
+    plazo: str | None = None
+    responsable: str | None = None
+
+
 class RespuestaConversacion(BaseModel):
     """Respuesta del endpoint: el texto de Javo + lo que propuso/citó en este turno.
 
-    `componentes` y `fuentes` van vacíos salvo que Javo haya propuesto componentes o
-    citado fuentes (Drive/internet) durante la conversación.
+    `componentes`, `tareas` y `fuentes` van vacíos salvo que Javo haya propuesto
+    componentes/tareas o citado fuentes (Drive/internet) durante la conversación.
     """
 
     texto: str
     componentes: list[ComponentePropuesto] = []
+    tareas: list[TareaPropuesta] = []
     fuentes: list[Fuente] = []
+
+
+class CrearPropuestaEntrada(BaseModel):
+    """Cuerpo del POST que persiste la propuesta que Javo armó en el chat: sus
+    componentes valorizados + las tareas de ejecución que propuso."""
+
+    tipo: str = "t1"
+    componentes: list[ComponentePropuesto] = []
+    tareas: list[TareaPropuesta] = []
 
 
 # Propuesta / cotización (004) -----------------------------------------------

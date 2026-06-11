@@ -20,6 +20,7 @@ from app.esquemas import (
     Fuente,
     MensajeConversacion,
     RespuestaConversacion,
+    TareaPropuesta,
 )
 
 # Id del modelo Sonnet (chat). Enrutar por costo (regla #4): el chat usa Sonnet.
@@ -33,30 +34,44 @@ MAX_ITERACIONES = 6
 TOPE_INTERNET = 5
 
 # Persona base de Javo, común a ambos tipos. Se cachea (estable entre turnos).
+# Javo NO es un asistente pasivo: es una dupla comercial SENIOR que piensa, propone
+# y decide con criterio de experto BTL.
 _PERSONA = (
-    "Eres Javo, el asistente comercial de una agencia de marketing/BTL (cliente "
-    "piloto: Capsulab). Hablas en español de Chile, cercano y profesional. Tu meta "
-    "es dejar la solicitud RESUELTA conversando con el gestor."
+    "Eres Javo, una DUPLA COMERCIAL SENIOR de una agencia de marketing/BTL (cliente "
+    "piloto: Capsulab): un ejecutivo con años de experiencia armando activaciones, "
+    "samplings, lanzamientos y campañas en terreno. Hablas en español de Chile, directo "
+    "y con criterio. NO eres un asistente pasivo: piensas y decides como un comercial "
+    "experimentado. Tomas la iniciativa — propones ideas, RECOMIENDAS el mejor camino "
+    "(no das menús de opciones sin opinión), anticipas lo que la activación va a "
+    "necesitar y lo dejas armado. Tu meta: convertir la solicitud en una PROPUESTA "
+    "RESUELTA Y EJECUTABLE: componentes valorizados (con valores REALES del Drive, "
+    "nunca inventados) y las TAREAS que el equipo necesita para ejecutarla."
 )
 
 # Guía del Tipo 1 (cotización concreta).
 _GUIA_T1 = (
-    "Esta es una COTIZACIÓN CONCRETA (Tipo 1): ya se sabe qué hacer. Tu trabajo es "
-    "aterrizar los componentes (catering, promotores, producto, uniforme, horas, "
-    "valores) y armar una cotización clara. Usa la herramienta `buscar_en_drive` para "
-    "obtener los valores REALES del catálogo de la empresa ANTES de dar un precio: NO "
-    "inventes valores (si no está en el catálogo, pídelo o márcalo como estimación). "
-    "Cuando tengas los componentes con su valor, regístralos con `proponer_componentes` "
-    "(incluye el origen del Drive) para que el gestor los confirme."
+    "Esta es una COTIZACIÓN CONCRETA (Tipo 1): ya se sabe qué hacer. Como dupla "
+    "comercial senior, ATERRIZA tú la cotización con criterio profesional: define los "
+    "componentes que la activación realmente necesita (catering, promotores, producto, "
+    "uniforme, horas, días, valores) sin esperar a que el gestor te dicte cada cosa. "
+    "Usa `buscar_en_drive` para los valores REALES del catálogo ANTES de dar un precio: "
+    "NO inventes (si falta, pídelo o márcalo como estimación). Registra los componentes "
+    "con `proponer_componentes` (incluye proveedor, días y origen del Drive). Luego "
+    "propón las TAREAS de ejecución con `proponer_tareas`: piensa como quien va a "
+    "EJECUTAR (reclutar promotores, comprar insumos, producir material, "
+    "permisos/logística, coordinación), cada una con su área y un plazo realista. "
+    "Recomienda con seguridad; el gestor confirma."
 )
 
 # Guía del Tipo 2 (ideas / propuesta creativa).
 _GUIA_T2 = (
     "Esto es un pedido de IDEAS / PROPUESTA CREATIVA (Tipo 2): no hay brief cerrado. "
-    "Propón conceptos creativos y co-crea con el gestor. Puedes inspirarte en casos "
-    "anteriores del Drive con `buscar_en_drive` (tipo 'caso'). Ofrece buscar en internet "
-    "con `buscar_en_internet` SOLO si el usuario lo pide explícitamente; cuando uses "
-    "internet, cita las fuentes. Itera sobre la idea ganadora hasta aterrizarla."
+    "Como comercial senior, LIDERA la co-creación: propón 2-3 conceptos potentes y di "
+    "CLARO cuál recomiendas y por qué, en vez de listar opciones neutras. Inspírate en "
+    "casos del Drive con `buscar_en_drive` (tipo 'caso'). Ofrece `buscar_en_internet` "
+    "SOLO si el usuario lo pide; cita las fuentes. Cuando la idea ganadora se aterrice, "
+    "bájala a componentes (`proponer_componentes`, con proveedor/días) y a tareas de "
+    "ejecución (`proponer_tareas`)."
 )
 
 _GUIA_POR_TIPO = {"t1": _GUIA_T1, "t2": _GUIA_T2}
@@ -161,7 +176,15 @@ def _tool_proponer_componentes() -> dict:
                             "nombre": {"type": "string"},
                             "detalle": {"type": "string"},
                             "cantidad": {"type": "integer"},
+                            "dias": {
+                                "type": "integer",
+                                "description": "Días de la activación (la tarifa es por día). Si no aplica, 1.",
+                            },
                             "valor_unitario": {"type": "number"},
+                            "proveedor": {
+                                "type": "string",
+                                "description": "Proveedor del catálogo del Drive (si lo hay).",
+                            },
                             "origen": {"type": "string"},
                         },
                         "required": ["nombre"],
@@ -173,11 +196,49 @@ def _tool_proponer_componentes() -> dict:
     }
 
 
+def _tool_proponer_tareas() -> dict:
+    return {
+        "name": "proponer_tareas",
+        "description": (
+            "Registra las TAREAS que el equipo necesita para EJECUTAR la activación. "
+            "Propónlas con criterio de comercial senior: qué hay que hacer concretamente "
+            "para que la propuesta se ejecute (reclutar promotores, comprar insumos, "
+            "producir material, permisos/logística, coordinación). Cada tarea con su "
+            "área responsable y un plazo realista. No las guarda; el gestor confirma."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tareas": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "nombre": {"type": "string"},
+                            "area": {
+                                "type": "string",
+                                "description": "Área responsable (RRHH, Producción, Compras, Diseño, Logística, Comercial, Coordinación).",
+                            },
+                            "plazo": {
+                                "type": "string",
+                                "description": "Plazo realista (ej. '3 días', '1 semana').",
+                            },
+                        },
+                        "required": ["nombre", "area"],
+                    },
+                }
+            },
+            "required": ["tareas"],
+        },
+    }
+
+
 def _herramientas(permitir_internet: bool) -> list[dict]:
     tools = [_tool_buscar_en_drive()]
     if permitir_internet:
         tools.append(_tool_buscar_en_internet())
     tools.append(_tool_proponer_componentes())
+    tools.append(_tool_proponer_tareas())
     return tools
 
 
@@ -218,12 +279,13 @@ async def _ejecutar_herramienta(
     proveedor_busqueda,
     empresa_id,
     componentes: list[ComponentePropuesto],
+    tareas: list[TareaPropuesta],
     fuentes: list[Fuente],
     usos_internet: int,
 ) -> tuple[str, int]:
     """Ejecuta UNA herramienta (la corre el backend, no el LLM) y devuelve el texto del
     `tool_result` + el contador de búsquedas en internet actualizado. Acumula los
-    componentes propuestos y las fuentes citadas."""
+    componentes propuestos, las tareas propuestas y las fuentes citadas."""
     nombre = getattr(bloque, "name", "")
     entrada = getattr(bloque, "input", None) or {}
 
@@ -269,11 +331,26 @@ async def _ejecutar_herramienta(
                     nombre=c.get("nombre", ""),
                     detalle=c.get("detalle"),
                     cantidad=int(c.get("cantidad", 1) or 1),
+                    dias=c.get("dias"),
                     valor_unitario=c.get("valor_unitario"),
+                    proveedor=c.get("proveedor"),
                     origen=c.get("origen"),
                 )
             )
         return (f"Componentes registrados: {len(nuevos)}. (El gestor los confirmará.)", usos_internet)
+
+    if nombre == "proponer_tareas":
+        nuevas = entrada.get("tareas", []) or []
+        for t in nuevas:
+            tareas.append(
+                TareaPropuesta(
+                    nombre=t.get("nombre", ""),
+                    area=t.get("area", ""),
+                    plazo=t.get("plazo"),
+                    responsable=t.get("responsable"),
+                )
+            )
+        return (f"Tareas registradas: {len(nuevas)}. (El gestor las confirmará.)", usos_internet)
 
     return (f"Herramienta desconocida: {nombre}.", usos_internet)
 
@@ -300,6 +377,7 @@ async def responder_javo(
 
     conversacion = _normalizar(mensajes)
     componentes: list[ComponentePropuesto] = []
+    tareas: list[TareaPropuesta] = []
     fuentes: list[Fuente] = []
     usos_internet = 0
     ultimo_texto = ""
@@ -328,7 +406,10 @@ async def responder_javo(
 
         if getattr(respuesta, "stop_reason", None) != "tool_use":
             return RespuestaConversacion(
-                texto=ultimo_texto, componentes=componentes, fuentes=fuentes
+                texto=ultimo_texto,
+                componentes=componentes,
+                tareas=tareas,
+                fuentes=fuentes,
             )
 
         # Hay tool_use: ejecutar las herramientas y reanexar el resultado.
@@ -343,6 +424,7 @@ async def responder_javo(
                 proveedor_busqueda,
                 empresa_id,
                 componentes,
+                tareas,
                 fuentes,
                 usos_internet,
             )
@@ -355,5 +437,6 @@ async def responder_javo(
     return RespuestaConversacion(
         texto=ultimo_texto or "Estoy afinando la propuesta, dame un momento.",
         componentes=componentes,
+        tareas=tareas,
         fuentes=fuentes,
     )

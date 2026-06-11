@@ -16,6 +16,9 @@ Si el refresh del token falla (revocado/expirado) o no hay secreto, lanza
 `ErrorAutenticacionGmail` para que la ingesta marque la integración como
 'reconectar' sin caerse (CA7).
 """
+import html
+import logging
+import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
 
@@ -28,6 +31,12 @@ from app.servicios.gmail import (
     FabricaClienteGmail,
     MensajeCorreo,
 )
+
+_LOG = logging.getLogger(__name__)
+
+# Cota dura del primer sync: aunque se pagine, no ingerimos un inbox gigantesco de
+# golpe (cada correo paga una clasificación Haiku). Si hay más, se loggea (no callado).
+TOPE_PRIMER_SYNC = 100
 
 URL_TOKEN_GOOGLE = "https://oauth2.googleapis.com/token"
 BASE_GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -55,6 +64,30 @@ def _extraer_texto_plano(payload: dict) -> str:
     return ""
 
 
+def _strip_html(crudo: str) -> str:
+    """HTML → texto plano aproximado (para clasificar correos solo-HTML). Quita
+    <script>/<style>, los tags y colapsa espacios; no es un render fiel, pero da
+    contenido clasificable en vez de un cuerpo vacío."""
+    sin_bloques = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1>", " ", crudo)
+    sin_tags = re.sub(r"(?s)<[^>]+>", " ", sin_bloques)
+    return re.sub(r"\s+", " ", html.unescape(sin_tags)).strip()
+
+
+def _extraer_html(payload: dict) -> str:
+    """Fallback cuando NO hay text/plain (correos solo-HTML: Uber, newsletters…):
+    busca el primer text/html y lo limpia. Antes esto devolvía '' → cuerpo vacío →
+    la clasificación fallaba con 400 (mensaje vacío a la API)."""
+    mime = payload.get("mimeType", "")
+    cuerpo = payload.get("body", {})
+    if mime.startswith("text/html") and cuerpo.get("data"):
+        return _strip_html(_decodificar_cuerpo(cuerpo["data"]))
+    for parte in payload.get("parts", []) or []:
+        texto = _extraer_html(parte)
+        if texto:
+            return texto
+    return ""
+
+
 def _a_mensaje(datos: dict) -> MensajeCorreo:
     """Mapea la respuesta de `users.messages.get` a nuestro `MensajeCorreo`."""
     payload = datos.get("payload", {})
@@ -68,7 +101,8 @@ def _a_mensaje(datos: dict) -> MensajeCorreo:
         remitente=nombre,
         correo_origen=correo,
         asunto=cabeceras.get("subject", ""),
-        cuerpo=_extraer_texto_plano(payload),
+        # text/plain si existe; si no (correo solo-HTML), caemos al HTML limpiado.
+        cuerpo=_extraer_texto_plano(payload) or _extraer_html(payload),
     )
 
 
@@ -142,12 +176,20 @@ class ClienteGmailReal:
     async def _ids_por_historial(
         self, http: httpx.AsyncClient, cursor: str, cabeceras: dict
     ) -> tuple[list[str], str | None]:
-        """Incremental: `users.history.list` desde el `cursor` (historyId)."""
+        """Incremental: `users.history.list` desde el `cursor` (historyId). Si Gmail
+        responde 404 (el `historyId` quedó demasiado viejo/invalidado — pasa tras días
+        sin poll), RE-SINCRONIZA desde cero en vez de reventar con 500 (auditoría #8)."""
         resp = await http.get(
             f"{BASE_GMAIL}/history",
             params={"startHistoryId": cursor, "historyTypes": "messageAdded"},
             headers=cabeceras,
         )
+        if resp.status_code == 404:
+            _LOG.warning(
+                "history.list devolvió 404 (historyId %s demasiado viejo): re-sync inicial.",
+                cursor,
+            )
+            return await self._ids_iniciales(http, cabeceras)
         resp.raise_for_status()
         datos = resp.json()
         ids: list[str] = []
@@ -163,27 +205,39 @@ class ClienteGmailReal:
     async def _ids_iniciales(
         self, http: httpx.AsyncClient, cabeceras: dict
     ) -> tuple[list[str], str | None]:
-        """Primer sync: fallback por fecha (`after:`) y baseline del historyId."""
+        """Primer sync: fallback por fecha (`after:`), PAGINADO hasta TOPE_PRIMER_SYNC,
+        y baseline del historyId. Sin paginar solo traía 50 (auditoría #9): un inbox
+        grande salía truncado y los #51+ no los veía ni el incremental."""
         desde = datetime.now(timezone.utc) - timedelta(days=self._ventana)
-        resp = await http.get(
-            f"{BASE_GMAIL}/messages",
-            params={
-                # Excluye el ruido (promos, redes sociales, foros y novedades/banco):
-                # deja el inbox "Primary" (correspondencia real). Una bandeja BTL real no
-                # tiene esa publicidad; esto la simula con un inbox personal de pruebas.
-                "q": (
-                    f"after:{int(desde.timestamp())} "
-                    "-category:promotions -category:social "
-                    "-category:forums -category:updates"
-                ),
-                "maxResults": 50,
-            },
-            headers=cabeceras,
+        # Excluye el ruido (promos, redes sociales, foros y novedades/banco): deja el
+        # inbox "Primary" (correspondencia real).
+        consulta = (
+            f"after:{int(desde.timestamp())} "
+            "-category:promotions -category:social "
+            "-category:forums -category:updates"
         )
-        resp.raise_for_status()
-        ids = [m["id"] for m in resp.json().get("messages", []) or []]
+        ids: list[str] = []
+        page_token: str | None = None
+        while len(ids) < TOPE_PRIMER_SYNC:
+            params: dict = {"q": consulta, "maxResults": 100}
+            if page_token:
+                params["pageToken"] = page_token
+            resp = await http.get(
+                f"{BASE_GMAIL}/messages", params=params, headers=cabeceras
+            )
+            resp.raise_for_status()
+            datos = resp.json()
+            ids.extend(m["id"] for m in datos.get("messages", []) or [])
+            page_token = datos.get("nextPageToken")
+            if not page_token:
+                break
+        if page_token:  # quedaron correos sin traer: lo dejamos en el log (no callado)
+            _LOG.info(
+                "Primer sync: tope de %d correos alcanzado; el inbox tiene más.",
+                TOPE_PRIMER_SYNC,
+            )
         nuevo_cursor = await self._historyid_actual(http, cabeceras)
-        return ids, nuevo_cursor
+        return ids[:TOPE_PRIMER_SYNC], nuevo_cursor
 
     async def _historyid_actual(
         self, http: httpx.AsyncClient, cabeceras: dict
@@ -232,6 +286,11 @@ class FabricaClienteGmailReal:
             client_secret=self._client_secret,
             casilla=integracion.casilla,
             cliente=self._cliente,
+            # Primer sync: 1 año hacia atrás para traer la correspondencia REAL ya
+            # existente del inbox (no solo lo que llegue post-conexión). El tope de
+            # `maxResults=50` acota cuántos se ingieren; los siguientes polls son
+            # incrementales por historyId, así que esta ventana solo aplica al inicio.
+            ventana_inicial_dias=365,
         )
 
 

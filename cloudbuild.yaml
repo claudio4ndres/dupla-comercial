@@ -1,0 +1,21 @@
+# Build del contenedor único en Cloud Build (amd64 nativo) con los valores
+# VITE_* de Supabase (públicos) incrustados en el bundle del front. Se invoca con
+# --substitutions desde `gcloud builds submit`. El env del BACKEND no va aquí: se
+# inyecta como variables de Cloud Run en el deploy (--env-vars-file).
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'VITE_SUPABASE_URL=${_SUPABASE_URL}'
+      - '--build-arg'
+      - 'VITE_SUPABASE_ANON_KEY=${_ANON_KEY}'
+      - '-t'
+      - '${_IMAGE}'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_IMAGE}']
+images:
+  - '${_IMAGE}'
+options:
+  logging: CLOUD_LOGGING_ONLY

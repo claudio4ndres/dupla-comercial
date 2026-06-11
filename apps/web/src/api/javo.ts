@@ -9,7 +9,7 @@
 // simulada (`respuestaFallback`) para que el demo siga.
 
 import { cabecerasAuth } from './auth'
-import type { Componente, Fuente, Mensaje, TipoConfirmado } from '../tipos'
+import type { Componente, Fuente, Mensaje, Tarea, TipoConfirmado } from '../tipos'
 
 // Base de la API. En dev se puede apuntar con VITE_API_URL; por defecto el proxy /api.
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
@@ -18,13 +18,23 @@ interface ComponenteBackend {
   nombre: string
   detalle: string | null
   cantidad: number
+  dias: number | null
   valor_unitario: number | null
+  proveedor: string | null
   origen: string | null
+}
+
+interface TareaBackend {
+  nombre: string
+  area: string
+  plazo: string | null
+  responsable: string | null
 }
 
 interface RespuestaJavoBackend {
   texto: string
   componentes?: ComponenteBackend[]
+  tareas?: TareaBackend[]
   fuentes?: Fuente[]
 }
 
@@ -32,6 +42,7 @@ interface RespuestaJavoBackend {
 export interface RespuestaJavo {
   texto: string
   componentes: Componente[]
+  tareas: Tarea[]
   fuentes: Fuente[]
 }
 
@@ -40,8 +51,19 @@ function aComponente(c: ComponenteBackend): Componente {
     nombre: c.nombre,
     detalle: c.detalle ?? '',
     cantidad: c.cantidad ?? 1,
+    dias: c.dias ?? undefined,
     valor: c.valor_unitario ?? 0,
+    proveedor: c.proveedor ?? undefined,
     origen: c.origen ?? undefined,
+  }
+}
+
+function aTarea(t: TareaBackend): Tarea {
+  return {
+    nombre: t.nombre,
+    area: t.area,
+    responsable: t.responsable ?? '',
+    plazo: t.plazo ?? '',
   }
 }
 
@@ -73,11 +95,12 @@ export async function conversarConJavo(params: {
     return {
       texto: data.texto?.trim() || respuestaFallback(params.tipo),
       componentes: (data.componentes ?? []).map(aComponente),
+      tareas: (data.tareas ?? []).map(aTarea),
       fuentes: data.fuentes ?? [],
     }
   } catch {
     // Backend caído/no cableado: demo offline (sólo texto canned).
-    return { texto: respuestaFallback(params.tipo), componentes: [], fuentes: [] }
+    return { texto: respuestaFallback(params.tipo), componentes: [], tareas: [], fuentes: [] }
   }
 }
 

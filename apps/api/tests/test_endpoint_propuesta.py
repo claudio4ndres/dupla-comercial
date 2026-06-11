@@ -14,9 +14,11 @@ from fastapi.testclient import TestClient
 
 from app.dependencias import (
     obtener_empresa_actual,
+    obtener_repositorio_conversaciones,
     obtener_repositorio_propuestas,
 )
 from app.main import app
+from app.repositorios.conversaciones import RepositorioConversacionesEnMemoria
 from app.repositorios.propuestas import (
     ComponentePropuesta,
     Propuesta,
@@ -30,6 +32,9 @@ EMPRESA_B = uuid4()
 
 def _cliente_http(repo, empresa_id=EMPRESA_A):
     app.dependency_overrides[obtener_repositorio_propuestas] = lambda: repo
+    app.dependency_overrides[obtener_repositorio_conversaciones] = (
+        lambda: RepositorioConversacionesEnMemoria()
+    )
     app.dependency_overrides[obtener_empresa_actual] = lambda: empresa_id
     return TestClient(app)
 
@@ -84,6 +89,50 @@ def test_devuelve_la_propuesta_de_la_solicitud():
     assert cuerpo["componentes"][0]["dias"] == 4
     assert cuerpo["tareas"][0]["grupo"] == "RRHH"
     assert cuerpo["tareas"][0]["vencimiento"] == "3 días"
+
+
+def test_post_persiste_la_propuesta_que_armo_javo():
+    # Write-path (gap bloqueante de la auditoría): 'Generar propuesta' PERSISTE los
+    # componentes + tareas que Javo armó en el chat. Antes sólo hacía GET → 404 con
+    # datos reales; ahora la conversación baja a una propuesta real.
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([])
+    http = _cliente_http(repo)
+
+    r = http.post(
+        f"/solicitudes/{sol}/propuesta",
+        json={
+            "tipo": "t1",
+            "componentes": [
+                {
+                    "nombre": "Promotoras",
+                    "detalle": "3 tiendas",
+                    "cantidad": 6,
+                    "dias": 3,
+                    "valor_unitario": 240000,
+                    "proveedor": "Eventos Pro",
+                }
+            ],
+            "tareas": [
+                {"nombre": "Reclutar 6 promotoras", "area": "RRHH", "plazo": "3 días"}
+            ],
+        },
+    )
+
+    assert r.status_code == 200
+    cuerpo = r.json()
+    assert cuerpo["estado"] == "borrador"
+    assert cuerpo["total"] == 6 * 3 * 240000  # cantidad × días × valor
+    assert cuerpo["componentes"][0]["proveedor"] == "Eventos Pro"
+    assert cuerpo["componentes"][0]["dias"] == 3
+    assert cuerpo["tareas"][0]["grupo"] == "RRHH"  # area → grupo
+    assert cuerpo["tareas"][0]["vencimiento"] == "3 días"  # plazo → vencimiento
+    assert "empresa_id" not in cuerpo  # CA5
+
+    # Y queda PERSISTIDA: el GET ahora la devuelve (antes daba 404 con datos reales).
+    g = http.get(f"/solicitudes/{sol}/propuesta")
+    assert g.status_code == 200
+    assert g.json()["total"] == 6 * 3 * 240000
 
 
 def test_sin_propuesta_devuelve_404():

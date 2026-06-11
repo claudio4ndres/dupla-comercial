@@ -88,7 +88,9 @@ def test_captura_componentes_propuestos_sin_persistir():
                             "nombre": "Promotoras",
                             "detalle": "3 tiendas",
                             "cantidad": 6,
+                            "dias": 3,
                             "valor_unitario": 240000,
+                            "proveedor": "Eventos Pro",
                             "origen": "Tarifario.xlsx",
                         }
                     ]
@@ -106,6 +108,33 @@ def test_captura_componentes_propuestos_sin_persistir():
     c = resp.componentes[0]
     assert c.nombre == "Promotoras" and c.cantidad == 6
     assert c.valor_unitario == 240000 and c.origen == "Tarifario.xlsx"
+    assert c.proveedor == "Eventos Pro" and c.dias == 3
+
+
+def test_captura_tareas_propuestas():
+    # Javo decide y propone las TAREAS de ejecución (criterio de comercial senior).
+    cliente = ClienteAnthropicGuionFake(
+        [
+            respuesta_tool_use(
+                "proponer_tareas",
+                {
+                    "tareas": [
+                        {"nombre": "Reclutar 6 promotoras", "area": "RRHH", "plazo": "3 días"},
+                        {"nombre": "Comprar insumos de sampling", "area": "Compras", "plazo": "1 semana"},
+                    ]
+                },
+            ),
+            respuesta_texto("Te dejé las tareas de ejecución; confírmame."),
+        ]
+    )
+    resp = _correr(
+        "t1", _msg("arma las tareas"), cliente,
+        repo_catalogo=RepositorioCatalogoEnMemoria([]),
+        proveedor_busqueda=_ProveedorFake(), empresa_id=EMPRESA,
+    )
+    assert len(resp.tareas) == 2
+    t = resp.tareas[0]
+    assert t.nombre == "Reclutar 6 promotoras" and t.area == "RRHH" and t.plazo == "3 días"
 
 
 # ── T8 · CA2 ─────────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.dependencias import (
+    obtener_cliente_anthropic,
     obtener_fabrica_cliente_gmail,
     obtener_repositorio_integraciones_servicio,
     obtener_repositorio_solicitudes_servicio,
@@ -25,6 +26,7 @@ from app.repositorios.solicitudes import RepositorioSolicitudesEnMemoria
 from app.rutas.interno import verificar_credencial_servicio
 from app.servicios.gmail import MensajeCorreo
 from tests.dobles import (
+    ClienteAnthropicFake,
     ClienteGmailFake,
     ClienteGmailQueFallaAuth,
     FabricaClienteGmailFake,
@@ -67,6 +69,11 @@ def _cliente_http(repo_integraciones, repo_solicitudes, fabrica, *, con_auth=Fal
         lambda: repo_solicitudes
     )
     app.dependency_overrides[obtener_fabrica_cliente_gmail] = lambda: fabrica
+    # Mockea el clasificador (Haiku): el poller NO debe llamar a Anthropic real en
+    # tests (CLAUDE.md §6). Devuelve una clasificación fija para cada correo.
+    app.dependency_overrides[obtener_cliente_anthropic] = lambda: ClienteAnthropicFake(
+        {"resumen": "Resumen de prueba", "tipo": "tipo_1"}
+    )
     if con_auth:
         # Probamos la protección REAL: sólo inyectamos el secreto esperado.
         app.dependency_overrides[obtener_secreto_poller] = lambda: SECRETO
@@ -100,7 +107,9 @@ def test_poller_ingiere_dos_correos_en_una_bandeja():
     creadas = list(repo_sol._por_id.values())
     assert len(creadas) == 2
     assert all(s.empresa_id == EMPRESA_A for s in creadas)
-    assert all(s.tipo == "sin_clasificar" and s.estado == "nueva" for s in creadas)
+    # El poller clasifica al ingerir (Haiku mockeado) → tipo + resumen poblados.
+    assert all(s.tipo == "tipo_1" and s.estado == "nueva" for s in creadas)
+    assert all(s.resumen == "Resumen de prueba" for s in creadas)
 
 
 def test_poller_no_cruza_tenants_y_aisla_fallos():

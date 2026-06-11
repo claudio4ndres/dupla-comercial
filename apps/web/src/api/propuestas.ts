@@ -7,7 +7,7 @@
 // `null` para que la UI use su fallback (la demo no se rompe).
 
 import { cabecerasAuth } from './auth'
-import type { Componente, Tarea } from '../tipos'
+import type { Componente, Tarea, TipoConfirmado } from '../tipos'
 
 // Base de la API. En dev se apunta con VITE_API_URL; por defecto, el proxy /api.
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
@@ -101,6 +101,52 @@ export async function obtenerPropuesta(solicitudId: string): Promise<PropuestaRe
   try {
     const r = await fetch(`${API_BASE}/solicitudes/${solicitudId}/propuesta`, {
       headers: cabecerasAuth(),
+    })
+    if (!r.ok) throw new Error(`backend respondió ${r.status}`)
+    const data = (await r.json()) as PropuestaBackend
+    return {
+      componentes: data.componentes.map(aComponente),
+      tareas: data.tareas.map(aTarea),
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * PERSISTE la propuesta que Javo armó en el chat (componentes valorizados + tareas)
+ * y devuelve la versión guardada. Es lo que hace "Generar propuesta": antes sólo
+ * leía (GET) y daba 404 con datos reales; ahora la conversación baja a una propuesta
+ * real (en la DB), que luego ven las pantallas Propuesta/Tareas y los exports.
+ */
+export async function guardarPropuesta(
+  solicitudId: string,
+  tipo: TipoConfirmado,
+  componentes: Componente[],
+  tareas: Tarea[],
+): Promise<PropuestaResuelta | null> {
+  try {
+    const r = await fetch(`${API_BASE}/solicitudes/${solicitudId}/propuesta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...cabecerasAuth() },
+      body: JSON.stringify({
+        tipo,
+        componentes: componentes.map((c) => ({
+          nombre: c.nombre,
+          detalle: c.detalle,
+          cantidad: c.cantidad,
+          dias: c.dias,
+          valor_unitario: c.valor,
+          proveedor: c.proveedor,
+          origen: c.origen,
+        })),
+        tareas: tareas.map((t) => ({
+          nombre: t.nombre,
+          area: t.area,
+          plazo: t.plazo,
+          responsable: t.responsable,
+        })),
+      }),
     })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as PropuestaBackend

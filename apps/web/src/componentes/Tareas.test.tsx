@@ -32,7 +32,7 @@ function respuesta(body: unknown, ok = true, status = 200): Response {
 /** Mock de fetch ruteado por URL: roster + listas de ClickUp + envío de tareas. */
 function fetchMockClickUp(opts: { listas?: unknown; creadas?: unknown; miembros?: unknown } = {}) {
   const { listas = LISTAS, creadas = { creadas: 2 }, miembros = ROSTER } = opts
-  return vi.fn((input: RequestInfo | URL) => {
+  return vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
     const u = String(input)
     // `/miembros` debe ir ANTES que `/tareas/clickup`: ninguna comparte substring, pero
     // así queda explícito que el roster es su propia ruta.

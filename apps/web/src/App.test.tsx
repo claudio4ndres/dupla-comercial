@@ -21,7 +21,7 @@ import { supabase } from './supabase/cliente'
 import App from './App'
 
 // Alias tipado para acceder a los mocks sin castings repetitivos.
-const mockAuth = supabase.auth as {
+const mockAuth = supabase.auth as unknown as {
   getSession: ReturnType<typeof vi.fn>
   signInWithPassword: ReturnType<typeof vi.fn>
   signOut: ReturnType<typeof vi.fn>
