@@ -163,3 +163,37 @@ def test_poller_con_credencial_de_servicio_devuelve_200():
 
     assert r.status_code == 200
     assert r.json() == {"empresas_procesadas": 0, "solicitudes_creadas": 0}
+
+
+class _GmailRevienta:
+    """Cliente Gmail que lanza un error NO-auth (p. ej. Secret Manager con un
+    token_ref roto). La ingesta sólo atrapa el de auth, así que este sube al poller,
+    que debe aislarlo (defensa en profundidad multi-tenant)."""
+
+    async def listar_nuevos(self, cursor):
+        raise RuntimeError("Secret Manager: token_ref inusable")
+
+
+def test_poller_aisla_error_inesperado_y_no_revienta():
+    # El caso real del token viejo tras migrar a Secret Manager: una empresa revienta
+    # con un error inesperado → se marca 'reconectar' y se SIGUE con las demás (no 500).
+    repo_int = RepositorioIntegracionesEnMemoria(
+        [_integracion(EMPRESA_A), _integracion(EMPRESA_B)]
+    )
+    repo_sol = RepositorioSolicitudesEnMemoria([])
+    fabrica = FabricaClienteGmailFake(
+        {
+            EMPRESA_A: _GmailRevienta(),
+            EMPRESA_B: ClienteGmailFake([_mensaje("b-1")], nuevo_cursor="cur-B"),
+        }
+    )
+    http = _cliente_http(repo_int, repo_sol, fabrica)
+
+    r = http.post("/interno/poller/correo")
+
+    assert r.status_code == 200  # NO 500 aunque A reviente
+    assert r.json() == {"empresas_procesadas": 2, "solicitudes_creadas": 1}
+    integ_a = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_A))
+    integ_b = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_B))
+    assert integ_a.estado == "reconectar"  # la que reventó
+    assert integ_b.estado == "conectado"  # la sana sigue ok

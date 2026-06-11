@@ -5,6 +5,7 @@ cada empresa, ingiere sus correos nuevos. Corre con `service role` (sin JWT → 
 no aplica), así que la `empresa_id` se fija SIEMPRE desde cada integración: jamás se
 infiere del ambiente y jamás se cruzan tenants (T11).
 """
+import logging
 import secrets as _secrets
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -21,6 +22,8 @@ from app.servicios.clasificador import clasificar_solicitud
 from app.servicios.ingesta_correo import ingerir_correos_nuevos
 
 router = APIRouter(prefix="/interno", tags=["interno"])
+
+_LOG = logging.getLogger(__name__)
 
 
 def verificar_credencial_servicio(
@@ -55,16 +58,28 @@ async def poller_correo(
     empresas_procesadas = 0
     solicitudes_creadas = 0
     for integracion in integraciones:
-        gmail = fabrica_gmail.crear(integracion)
-        resultado = await ingerir_correos_nuevos(
-            integracion,
-            gmail,
-            repo_solicitudes,
-            repo_integraciones,
-            clasificar=clasificar,
-        )
         empresas_procesadas += 1
-        solicitudes_creadas += resultado.creadas
+        # Defensa en profundidad multi-tenant: una empresa que falle (token roto,
+        # Secret Manager, red…) NO debe tumbar el poll de las demás. Se la marca
+        # 'reconectar' y se sigue. El servicio de ingesta ya absorbe el caso de auth.
+        try:
+            gmail = fabrica_gmail.crear(integracion)
+            resultado = await ingerir_correos_nuevos(
+                integracion,
+                gmail,
+                repo_solicitudes,
+                repo_integraciones,
+                clasificar=clasificar,
+            )
+            solicitudes_creadas += resultado.creadas
+        except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
+            _LOG.exception(
+                "Poller: la empresa %s falló; se marca 'reconectar' y se sigue.",
+                integracion.empresa_id,
+            )
+            await repo_integraciones.marcar_estado(
+                integracion.empresa_id, "reconectar"
+            )
     return ResumenPoller(
         empresas_procesadas=empresas_procesadas,
         solicitudes_creadas=solicitudes_creadas,

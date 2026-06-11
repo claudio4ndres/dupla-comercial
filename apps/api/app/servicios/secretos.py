@@ -6,8 +6,11 @@ en tests una versión en memoria. El backend guarda el secreto y persiste sólo 
 de aquí hacia el front (CA5).
 """
 import json
+import logging
 from pathlib import Path
 from typing import Protocol
+
+_LOG = logging.getLogger(__name__)
 
 
 class AlmacenSecretos(Protocol):
@@ -136,7 +139,15 @@ class AlmacenSecretosSecretManager:
                 request={"name": f"{token_ref}/versions/latest"}
             )
         except Exception as exc:  # noqa: BLE001
-            if type(exc).__name__ == "NotFound":
+            # NotFound = el secreto no existe; InvalidArgument = el token_ref no es una
+            # ruta válida de Secret Manager (p. ej. quedó un ref del backend 'archivo'
+            # tras migrar a gcp). Ambos significan "no hay token usable" → None, así el
+            # cliente Gmail marca 'reconectar' en vez de tumbar el poller con un 500.
+            if type(exc).__name__ in ("NotFound", "InvalidArgument"):
+                _LOG.warning(
+                    "Secret Manager: token_ref inusable (%s); se trata como no conectado.",
+                    type(exc).__name__,
+                )
                 return None
             raise
         return resp.payload.data.decode("utf-8")
