@@ -37,7 +37,11 @@ async def listar_recursos(
 ) -> list[str]:
     """Recursos del Drive de la empresa: nombres REALES si hay Drive conectado, o el
     catálogo sembrado como respaldo."""
-    integracion = await integraciones.obtener_por_empresa(empresa_id)
+    # El Drive cuelga del OAuth de Google: se resuelve desde la integración de gmail
+    # (no de clickup, que la empresa podría tener conectada a la vez).
+    integracion = await integraciones.obtener_por_empresa_y_proveedor(
+        empresa_id, "gmail"
+    )
     if integracion is not None and integracion.token_ref:
         try:
             cliente = fabrica_drive.crear(integracion)

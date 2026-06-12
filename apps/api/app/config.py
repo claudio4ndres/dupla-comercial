@@ -83,6 +83,17 @@ class Settings(BaseSettings):
     clickup_api_token: str = ""
     clickup_list_id: str = ""
 
+    # App OAuth de ClickUp (Spec 009): client_id/secret de la app registrada en
+    # ClickUp (Settings → Apps). NO son secretos del usuario final; con ellos el
+    # backend canjea el `code` del consentimiento por el access token de cada empresa.
+    # `redirect_uri` es la URL de callback registrada (…/api/clickup/callback). Default
+    # vacío: sin valores reales en tests/CI (ahí el canje va mockeado, regla de oro #3).
+    # Se configuran por entorno: CLICKUP_CLIENT_ID / CLICKUP_CLIENT_SECRET /
+    # CLICKUP_REDIRECT_URI.
+    clickup_client_id: str = ""
+    clickup_client_secret: str = ""
+    clickup_redirect_uri: str = ""
+
 
 @lru_cache
 def obtener_settings() -> Settings:

@@ -73,6 +73,21 @@ class RepositorioIntegracionesSupabase:
         filas = resp.json()
         return self._a_integracion(filas[0]) if filas else None
 
+    async def obtener_por_empresa_y_proveedor(
+        self, empresa_id: UUID, proveedor: str
+    ) -> Integracion | None:
+        """Integración de un proveedor concreto de la empresa (gmail/clickup). Una
+        empresa puede tener varias; este filtro distingue cuál sin confundirlas."""
+        resp = await self._peticion(
+            "GET",
+            f"/integraciones?empresa_id=eq.{empresa_id}"
+            f"&proveedor=eq.{proveedor}&select=*",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        filas = resp.json()
+        return self._a_integracion(filas[0]) if filas else None
+
     async def listar_por_proveedor(self, proveedor: str) -> list[Integracion]:
         resp = await self._peticion(
             "GET",
@@ -126,6 +141,18 @@ class RepositorioIntegracionesSupabase:
         resp = await self._peticion(
             "DELETE",
             f"/integraciones?empresa_id=eq.{empresa_id}",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+
+    async def eliminar_por_proveedor(
+        self, empresa_id: UUID, proveedor: str
+    ) -> None:
+        """Borra SÓLO la integración de ese proveedor de la empresa (p.ej. desconectar
+        clickup sin tocar gmail). Idempotente: si no hay fila, PostgREST devuelve 204."""
+        resp = await self._peticion(
+            "DELETE",
+            f"/integraciones?empresa_id=eq.{empresa_id}&proveedor=eq.{proveedor}",
             headers=self._headers(),
         )
         resp.raise_for_status()

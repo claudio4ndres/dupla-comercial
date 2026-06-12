@@ -3,16 +3,26 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mockeamos el cliente de ClickUp: la pantalla lo llama al montar para saber si
-// la empresa ya conectó su gestor de tareas. Cada test ajusta qué devuelve.
+// la empresa ya conectó su gestor de tareas (estado per-empresa) y para iniciar /
+// desconectar el OAuth. Cada test ajusta qué devuelve.
 vi.mock('../api/clickup', () => ({
-  listarListasClickUp: vi.fn(),
+  obtenerEstadoClickup: vi.fn(),
+  iniciarConexionClickup: vi.fn(),
+  desconectarClickup: vi.fn(),
+  ESTADO_CLICKUP_DESCONECTADO: { proveedor: null, estado: null },
 }))
 
 import { Configuracion } from './Configuracion'
-import { listarListasClickUp } from '../api/clickup'
+import {
+  desconectarClickup,
+  iniciarConexionClickup,
+  obtenerEstadoClickup,
+} from '../api/clickup'
 import { ESTADO_DESCONECTADO, type EstadoCorreo } from '../api/integraciones'
 
-const mockListas = listarListasClickUp as ReturnType<typeof vi.fn>
+const mockEstadoClickup = obtenerEstadoClickup as ReturnType<typeof vi.fn>
+const mockIniciarClickup = iniciarConexionClickup as ReturnType<typeof vi.fn>
+const mockDesconectarClickup = desconectarClickup as ReturnType<typeof vi.fn>
 const noop = () => {}
 
 /** Estado de correo "conectado" a la casilla del piloto (Capsulab). */
@@ -24,8 +34,10 @@ const CORREO_CONECTADO: EstadoCorreo = {
 
 describe('Configuracion (onboarding de conectores)', () => {
   beforeEach(() => {
-    // Por defecto: sin listas (gestor de tareas aún sin conectar).
-    mockListas.mockResolvedValue([])
+    // Por defecto: ClickUp sin conectar (gestor de tareas aún sin autorizar).
+    mockEstadoClickup.mockResolvedValue({ proveedor: null, estado: null })
+    mockIniciarClickup.mockResolvedValue('https://app.clickup.com/api?state=abc')
+    mockDesconectarClickup.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -47,8 +59,8 @@ describe('Configuracion (onboarding de conectores)', () => {
     expect(screen.getByText('Correo · Gmail')).toBeInTheDocument()
     expect(screen.getByText('Gestor de tareas · ClickUp')).toBeInTheDocument()
     expect(screen.getByText('Gestor de tareas · Jira')).toBeInTheDocument()
-    // El efecto de montaje consulta ClickUp (evita "act" warnings al desmontar).
-    await waitFor(() => expect(mockListas).toHaveBeenCalled())
+    // El efecto de montaje consulta el estado de ClickUp (evita "act" warnings).
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
   })
 
   it('con el correo conectado, muestra la casilla y un botón para cambiar', () => {
@@ -79,11 +91,8 @@ describe('Configuracion (onboarding de conectores)', () => {
     expect(onConectar).toHaveBeenCalledWith('gmail')
   })
 
-  it('con listas de ClickUp, muestra "Conectado" y cuántas listas hay', async () => {
-    mockListas.mockResolvedValue([
-      { id: '1', nombre: 'Producción', espacio: 'Capsulab' },
-      { id: '2', nombre: 'Compras', espacio: 'Capsulab' },
-    ])
+  it('con ClickUp conectado (estado per-empresa), muestra "Conectado" y un botón para cambiar', async () => {
+    mockEstadoClickup.mockResolvedValue({ proveedor: 'clickup', estado: 'conectado' })
     render(
       <Configuracion
         estadoCorreo={ESTADO_DESCONECTADO}
@@ -92,16 +101,18 @@ describe('Configuracion (onboarding de conectores)', () => {
         onIrA={noop}
       />,
     )
-    // Al montar consulta las listas reales del backend.
-    await waitFor(() => expect(mockListas).toHaveBeenCalled())
+    // Al montar consulta el estado real del conector de la empresa.
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
     // "Conectado" aparece (badge de estado + detalle); basta con que exista.
     await waitFor(() => expect(screen.getAllByText(/Conectado/i).length).toBeGreaterThan(0))
-    // Refleja cuántas listas tiene la empresa (texto único del detalle).
-    expect(screen.getByText(/2 listas/i)).toBeInTheDocument()
+    // Ofrece "Cambiar" (desconectar), espejo de Gmail.
+    expect(screen.getByRole('button', { name: /cambiar clickup/i })).toBeInTheDocument()
+    // Ya no aparece la vieja nota de "OAuth próximamente" (el flujo es real ahora).
+    expect(screen.queryByText(/conector OAuth próximamente/i)).not.toBeInTheDocument()
   })
 
-  it('sin listas de ClickUp, muestra "Conecta ClickUp" con la nota de OAuth próximamente', async () => {
-    mockListas.mockResolvedValue([])
+  it('con ClickUp en "reconectar" (token revocado/401), muestra "Reconectar" (CA6)', async () => {
+    mockEstadoClickup.mockResolvedValue({ proveedor: 'clickup', estado: 'reconectar' })
     render(
       <Configuracion
         estadoCorreo={ESTADO_DESCONECTADO}
@@ -110,10 +121,84 @@ describe('Configuracion (onboarding de conectores)', () => {
         onIrA={noop}
       />,
     )
-    await waitFor(() => expect(mockListas).toHaveBeenCalled())
-    expect(await screen.findByText(/Conecta ClickUp/i)).toBeInTheDocument()
-    // La nota específica del conector OAuth de ClickUp (distinta del badge de Jira).
-    expect(screen.getByText(/conector OAuth próximamente/i)).toBeInTheDocument()
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
+    // "Reconectar" aparece (badge de estado + botón); basta con que exista.
+    await waitFor(() => expect(screen.getAllByText(/Reconectar/i).length).toBeGreaterThan(0))
+    // Permite reconectar (vuelve a disparar el OAuth).
+    expect(screen.getByRole('button', { name: /reconectar clickup/i })).toBeInTheDocument()
+  })
+
+  it('sin ClickUp conectado, muestra "Sin conectar" y ofrece conectar (sin nota vieja de OAuth)', async () => {
+    mockEstadoClickup.mockResolvedValue({ proveedor: null, estado: null })
+    render(
+      <Configuracion
+        estadoCorreo={ESTADO_DESCONECTADO}
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: /conectar clickup/i })).toBeInTheDocument()
+    // El conector ya no dice "próximamente": es un flujo OAuth real.
+    expect(screen.queryByText(/conector OAuth próximamente/i)).not.toBeInTheDocument()
+  })
+
+  it('"Conectar ClickUp" inicia el OAuth y navega a la URL del backend', async () => {
+    const user = userEvent.setup()
+    const onNavegar = vi.fn()
+    mockEstadoClickup.mockResolvedValue({ proveedor: null, estado: null })
+    mockIniciarClickup.mockResolvedValue('https://app.clickup.com/api?state=xyz')
+    render(
+      <Configuracion
+        estadoCorreo={ESTADO_DESCONECTADO}
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+        onNavegar={onNavegar}
+      />,
+    )
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
+    await user.click(screen.getByRole('button', { name: /conectar clickup/i }))
+    expect(mockIniciarClickup).toHaveBeenCalled()
+    // Navega a la URL EXACTA del backend (no inventada por el front).
+    await waitFor(() =>
+      expect(onNavegar).toHaveBeenCalledWith('https://app.clickup.com/api?state=xyz'),
+    )
+  })
+
+  it('"Cambiar" desconecta ClickUp y la tarjeta vuelve a "Sin conectar"', async () => {
+    const user = userEvent.setup()
+    mockEstadoClickup.mockResolvedValue({ proveedor: 'clickup', estado: 'conectado' })
+    render(
+      <Configuracion
+        estadoCorreo={ESTADO_DESCONECTADO}
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
+    await user.click(await screen.findByRole('button', { name: /cambiar clickup/i }))
+    expect(mockDesconectarClickup).toHaveBeenCalled()
+    // Tras desconectar, vuelve a ofrecer "Conectar ClickUp".
+    expect(await screen.findByRole('button', { name: /conectar clickup/i })).toBeInTheDocument()
+  })
+
+  it('el token de ClickUp jamás aparece en la tarjeta (CA5)', async () => {
+    mockEstadoClickup.mockResolvedValue({ proveedor: 'clickup', estado: 'conectado' })
+    const { container } = render(
+      <Configuracion
+        estadoCorreo={ESTADO_DESCONECTADO}
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getAllByText(/Conectado/i).length).toBeGreaterThan(0))
+    // El estado per-empresa no trae token; nada parecido a un token se pinta.
+    expect(container.textContent ?? '').not.toMatch(/token/i)
   })
 
   it('la tarjeta de Jira está deshabilitada con un badge "Próximamente"', async () => {
@@ -129,7 +214,7 @@ describe('Configuracion (onboarding de conectores)', () => {
     expect(screen.getAllByText(/próximamente/i).length).toBeGreaterThan(0)
     // Jira no ofrece ningún botón de conexión (tarjeta no clickable).
     expect(screen.queryByRole('button', { name: /conectar jira/i })).not.toBeInTheDocument()
-    await waitFor(() => expect(mockListas).toHaveBeenCalled())
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
   })
 
   it('el botón "Continuar a la bandeja" navega a la bandeja (onIrA("inbox"))', async () => {

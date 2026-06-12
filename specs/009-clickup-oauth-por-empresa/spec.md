@@ -149,24 +149,23 @@ solo si *esa* empresa autorizó.
 
 ---
 
-## 6. Aclaraciones pendientes
+## 6. Aclaraciones (resueltas)
 
-- [NECESITA ACLARACIÓN: ¿ClickUp ofrece un app OAuth con `client_id`/`client_secret` y
-  `redirect_uri` que podamos registrar para Dupla Comercial? La tarea #23 se bloqueó por
-  "falta de credenciales reales": ¿ya existe la app OAuth de ClickUp registrada (y sus
-  secretos en Secret Manager / config), o ese registro es un paso manual del humano previo a
-  implementar?]
-- [NECESITA ACLARACIÓN: ¿Qué hacemos con el `CLICKUP_API_TOKEN` global actual y con la empresa
-  que hoy lo usa "de facto" (Capsulab)? Opciones: (a) eliminarlo y exigir que cada empresa
-  reconecte por OAuth; (b) sembrar la integración de Capsulab a partir de ese token como
-  puente temporal. ¿Cuál se prefiere para no dejar a Capsulab sin ClickUp el día del corte?]
-- [NECESITA ACLARACIÓN: ¿Qué **scopes/permisos** de ClickUp pedimos en el consentimiento?
-  Mínimo necesario para listar listas (team→space→folder→list) y crear tareas. ¿Alcanza con el
-  scope por defecto del token OAuth de ClickUp o hay que pedir algo explícito?]
-- [NECESITA ACLARACIÓN: ClickUp OAuth, ¿entrega **refresh token** (como Google) o un access
-  token de **larga duración / sin expiración**? Esto define si "Reconectar" (CA6) se dispara
-  solo por revocación o también por expiración, y qué se guarda en Secret Manager.]
-- [NECESITA ACLARACIÓN: El estado "Conectado" del panel, ¿se determina por la **existencia de
-  la integración** de la empresa (barato, sin llamar a ClickUp) o por una **verificación viva**
-  (pedir listas y ver que responde)? Hoy se infiere de "hay listas"; conviene separar "conectado"
-  (hay token de la empresa) de "tiene N listas disponibles".]
+- **#1 RESUELTA** — La app OAuth de ClickUp **existe** (confirmado por el usuario): hay
+  `client_id` / `client_secret` / `redirect_uri` registrados para Dupla Comercial. Los
+  secretos van a Secret Manager / config del backend (como Google); **nunca** al frontend.
+- **#2 RESUELTA** — El `CLICKUP_API_TOKEN` global **deja de gobernar** estado/uso por empresa.
+  Para no dejar a Capsulab sin ClickUp el día del corte: **puente** — se siembra la integración
+  de Capsulab a partir del token actual (fila en `integraciones` con su `empresa_id` + el token
+  en Secret Manager), así Capsulab queda "Conectado" con **su propio** token y el resto parte
+  "Sin conectar". No hay leak (cada una su token) y Capsulab no se cae. La env global queda solo
+  como fallback de migración, fuera del flujo por-empresa.
+- **#3 RESUELTA** — Se usa el **grant OAuth por defecto** de ClickUp (el consentimiento da acceso
+  a los workspaces autorizados; ClickUp no usa scopes granulares estilo Google). Alcanza para
+  listar team→space→folder→list y crear tareas. (Confirmar contra la doc de ClickUp al implementar.)
+- **#4 RESUELTA** — ClickUp entrega un **access token de larga duración** (no expira hasta
+  revocación; **sin** refresh token). Se guarda ese token en Secret Manager. "Reconectar" (CA6)
+  se dispara por **revocación / 401**, no por expiración. (Confirmar contra la doc al implementar.)
+- **#5 RESUELTA** — "Conectado" se determina por la **existencia de la integración** de la empresa
+  (barato, sin llamar a ClickUp), igual que Gmail. El **conteo de listas** es una llamada viva
+  **aparte**; si falla → "Reconectar" (CA6). Se separa "conectado" (hay token) de "tiene N listas".

@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { listarListasClickUp } from '../api/clickup'
+import {
+  desconectarClickup,
+  ESTADO_CLICKUP_DESCONECTADO,
+  iniciarConexionClickup,
+  obtenerEstadoClickup,
+  type EstadoClickup,
+} from '../api/clickup'
 import type { EstadoCorreo } from '../api/integraciones'
 import type { Pantalla, ProveedorCorreo } from '../tipos'
 
@@ -12,41 +18,72 @@ interface Props {
   onDesconectar: () => void
   /** Navega a otra pantalla (p. ej. 'inbox' al terminar el onboarding). */
   onIrA: (pantalla: Pantalla) => void
+  /**
+   * Navega el navegador a una URL externa (la de consentimiento de ClickUp).
+   * Inyectable para tests; por defecto redirige la pestaña actual, igual que el
+   * OAuth de Gmail en App.
+   */
+  onNavegar?: (url: string) => void
 }
 
 /**
  * Onboarding / Configuración post-login: cada empresa "prepara su espacio"
  * conectando SUS conectores (multi-tenant). Hoy: Correo (Gmail) y Gestor de
- * tareas (ClickUp habilitado, Jira "próximamente"). Se muestra al iniciar
+ * tareas (ClickUp con OAuth real, Jira "próximamente"). Se muestra al iniciar
  * sesión y también desde el ítem "Configuración" del menú lateral.
  *
  * NO reimplementa la lógica de conexión: el correo reusa los handlers
  * `onConectar/onDesconectar` de App (que hablan con el backend, regla de oro
- * #3) y ClickUp solo consulta `listarListasClickUp()` para saber si la empresa
- * ya tiene su gestor conectado.
+ * #3) y ClickUp consulta su estado per-empresa (`obtenerEstadoClickup`) e inicia
+ * / desconecta el OAuth vía el backend (espejo de Gmail). El token de ClickUp
+ * JAMÁS llega al front (CA5): solo se manejan proveedor/estado.
  */
-export function Configuracion({ estadoCorreo, onConectar, onDesconectar, onIrA }: Props) {
-  // Listas reales del ClickUp de la empresa. `undefined` = aún cargando;
-  // [] = sin conectar (o sin listas); con elementos = conectado.
-  const [listasClickUp, setListasClickUp] = useState<{ id: string; nombre: string }[] | undefined>(
-    undefined,
-  )
+export function Configuracion({
+  estadoCorreo,
+  onConectar,
+  onDesconectar,
+  onIrA,
+  onNavegar = (url: string) => window.location.assign(url),
+}: Props) {
+  // Estado real del conector ClickUp de la empresa (existencia de la integración,
+  // no conteo de listas). `undefined` = aún cargando; luego {proveedor, estado}.
+  const [estadoClickUp, setEstadoClickUp] = useState<EstadoClickup | undefined>(undefined)
 
-  // Al montar (y por empresa, vía remonta App al cambiar de tenant) consulta si
-  // ClickUp ya está conectado. Sin token, el backend devuelve [] (mostramos el
-  // aviso de "conecta ClickUp"); ante fallo también [] (no rompe la pantalla).
+  // Al montar (y por empresa, vía remonta App al cambiar de tenant) consulta el
+  // estado del conector. Sin integración → "Sin conectar"; token revocado/401 →
+  // "Reconectar" (CA6); ante fallo cae a desconectado (no rompe la pantalla).
   useEffect(() => {
     let activo = true
-    listarListasClickUp().then((listas) => {
-      if (activo) setListasClickUp(listas)
+    obtenerEstadoClickup().then((e) => {
+      if (activo) setEstadoClickUp(e)
     })
     return () => {
       activo = false
     }
   }, [])
 
+  // "Conectar"/"Reconectar": pide la URL de consentimiento al backend y navega.
+  // El front NUNCA inventa la URL (el `state` anti-CSRF lo fija el servidor); si
+  // el backend falla, no navegamos a una URL inventada (igual que Gmail).
+  async function conectarClickUp() {
+    try {
+      const url = await iniciarConexionClickup()
+      onNavegar(url)
+    } catch {
+      // Backend no cableado/caído: no navegamos.
+    }
+  }
+
+  // "Cambiar": desconecta ClickUp de la empresa en el backend y deja la tarjeta
+  // en "Sin conectar" (el secreto se borra en el backend; el front no lo toca).
+  async function desconectarClickUp() {
+    await desconectarClickup()
+    setEstadoClickUp(ESTADO_CLICKUP_DESCONECTADO)
+  }
+
   const correoConectado = estadoCorreo.estado === 'conectado'
-  const clickUpConectado = (listasClickUp?.length ?? 0) > 0
+  const clickUpConectado = estadoClickUp?.estado === 'conectado'
+  const clickUpReconectar = estadoClickUp?.estado === 'reconectar'
 
   return (
     <section className="screen">
@@ -96,7 +133,7 @@ export function Configuracion({ estadoCorreo, onConectar, onDesconectar, onIrA }
             </div>
           </div>
 
-          {/* Gestor de tareas · ClickUp (habilitado): estado por las listas reales. */}
+          {/* Gestor de tareas · ClickUp (OAuth real): estado per-empresa, espejo de Gmail. */}
           <div className="card conector">
             <div className="conector-head">
               <span className="conector-ico">✅</span>
@@ -104,23 +141,43 @@ export function Configuracion({ estadoCorreo, onConectar, onDesconectar, onIrA }
                 <b>Gestor de tareas · ClickUp</b>
                 <span className="conector-cat">Tareas del equipo</span>
               </div>
-              <span className={'conector-estado ' + (clickUpConectado ? 'on' : 'off')}>
-                {clickUpConectado ? 'Conectado' : 'Sin conectar'}
+              <span
+                className={
+                  'conector-estado ' +
+                  (clickUpConectado ? 'on' : clickUpReconectar ? 'warn' : 'off')
+                }
+              >
+                {clickUpConectado ? 'Conectado' : clickUpReconectar ? 'Reconectar' : 'Sin conectar'}
               </span>
             </div>
             <div className="conector-body">
               {clickUpConectado ? (
-                <p className="conector-detalle">
-                  Conectado · {listasClickUp!.length}{' '}
-                  {listasClickUp!.length === 1 ? 'lista disponible' : 'listas disponibles'} para
-                  enviar las tareas.
-                </p>
+                <>
+                  <p className="conector-detalle">
+                    Conectado · las tareas de cada propuesta se envían a tu ClickUp.
+                  </p>
+                  <button className="btn ghost" onClick={desconectarClickUp}>
+                    Cambiar ClickUp
+                  </button>
+                </>
+              ) : clickUpReconectar ? (
+                <>
+                  <p className="conector-detalle">
+                    Tu conexión con ClickUp dejó de funcionar (acceso revocado o expirado).
+                    Reconéctala para seguir enviando tareas.
+                  </p>
+                  <button className="btn primary" onClick={conectarClickUp}>
+                    Reconectar ClickUp
+                  </button>
+                </>
               ) : (
                 <>
                   <p className="conector-detalle">
                     Conecta ClickUp para enviar las tareas de cada propuesta a tu equipo.
                   </p>
-                  <span className="conector-nota">(conector OAuth próximamente)</span>
+                  <button className="btn primary" onClick={conectarClickUp}>
+                    Conectar ClickUp
+                  </button>
                 </>
               )}
             </div>

@@ -62,6 +62,19 @@ class UrlConsentimiento(BaseModel):
     url: str
 
 
+class EstadoClickUp(BaseModel):
+    """Estado de la conexión de ClickUp de una empresa, tal como lo consume el panel
+    de Conectores (Spec 009). Se deriva de la EXISTENCIA de la integración clickup de
+    la empresa (sin llamar a ClickUp): sin integración → todo en null ("Sin conectar").
+
+    Plano y SIN tokens (CA5): al usarlo como `response_model`, FastAPI descarta el
+    `token_ref` y cualquier otro campo interno; el token jamás viaja al front.
+    """
+
+    proveedor: str | None = None
+    estado: str | None = None  # conectado | reconectar | null (sin conectar)
+
+
 class ResumenPoller(BaseModel):
     """Resumen de una corrida del poller interno (cuántas casillas y solicitudes)."""
 

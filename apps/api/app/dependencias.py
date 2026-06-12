@@ -26,6 +26,8 @@ from app.servicios.drive_real import FabricaClienteDriveReal
 from app.servicios.empresa import ResolvedorEmpresaSupabase
 from app.servicios.jwt_supabase import VerificadorJwtSupabase
 from app.servicios.gmail_real import FabricaClienteGmailReal
+from app.servicios.oauth_clickup import ConfigOAuthClickUp
+from app.servicios.oauth_clickup_real import ClienteOAuthClickUpReal
 from app.servicios.oauth_gmail import ConfigOAuthGmail
 from app.servicios.oauth_gmail_real import ClienteOAuthGoogleReal
 from app.servicios.secretos import (
@@ -197,6 +199,30 @@ def obtener_cliente_oauth_google() -> ClienteOAuthGoogleReal:
     )
 
 
+def obtener_config_oauth_clickup() -> ConfigOAuthClickUp:
+    """Config de la app OAuth de ClickUp (client_id/secret/redirect_uri de `Settings`,
+    Spec 009). `url_post_conexion` es a dónde vuelve el navegador tras conectar (el panel
+    de Conectores del front). Espejo de `obtener_config_oauth_gmail`."""
+    settings = obtener_settings()
+    return ConfigOAuthClickUp(
+        client_id=settings.clickup_client_id,
+        client_secret=settings.clickup_client_secret,
+        redirect_uri=settings.clickup_redirect_uri,
+        url_post_conexion=settings.frontend_url,
+    )
+
+
+def obtener_cliente_oauth_clickup() -> ClienteOAuthClickUpReal:
+    """Cliente real del canje del `code` de ClickUp por el access token (Spec 009).
+    En tests se sobrescribe con un doble vía `app.dependency_overrides` (cero red)."""
+    settings = obtener_settings()
+    return ClienteOAuthClickUpReal(
+        settings.clickup_client_id,
+        settings.clickup_client_secret,
+        settings.clickup_redirect_uri,
+    )
+
+
 @lru_cache
 def obtener_almacen_secretos() -> AlmacenSecretos:
     """Almacén de secretos (refresh tokens de Gmail), elegido por `SECRETOS_BACKEND`:
@@ -264,15 +290,6 @@ def obtener_proveedor_busqueda() -> ProveedorBusquedaCurado:
     offline-safe. En tests se sobrescribe con un doble vía `app.dependency_overrides`
     (CA4: nunca se llama una API real)."""
     return ProveedorBusquedaCurado()
-
-
-def obtener_cliente_clickup() -> ClienteClickUp:
-    """Cliente del conector ClickUp, construido con el token de `Settings`
-    (`CLICKUP_API_TOKEN`). Sin token (default vacío) el cliente igual se construye:
-    los endpoints detectan que no hay token y caen a `[]` / 400 sin llamar a ClickUp.
-    El token vive sólo en el backend (regla de oro #3). En tests se sobrescribe con un
-    doble vía `app.dependency_overrides` (nunca se llama a ClickUp real)."""
-    return ClienteClickUp(obtener_settings().clickup_api_token)
 
 
 def obtener_resolvedor_empresa() -> ResolvedorEmpresaSupabase:
@@ -352,3 +369,28 @@ async def obtener_empresa_actual(
             detail="El usuario no tiene empresa asignada",
         )
     return empresa
+
+
+async def obtener_cliente_clickup(
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+    repo=Depends(obtener_repositorio_integraciones),
+    secretos: AlmacenSecretos = Depends(obtener_almacen_secretos),
+) -> ClienteClickUp:
+    """Cliente del conector ClickUp con el token PER-EMPRESA (Spec 009, fix del leak).
+
+    Antes usaba el `CLICKUP_API_TOKEN` GLOBAL para todos los tenants: el estado/uso no
+    dependía de la empresa, así que cualquiera veía las listas del dueño de ese token
+    (fallo de aislamiento, regla de oro #2). Ahora resuelve el token de la integración
+    `clickup` de la empresa del request: `integraciones` (RLS por su JWT) →
+    `AlmacenSecretos.obtener(token_ref)` → `ClienteClickUp(token)`.
+
+    Sin integración clickup (o token irrecuperable) → `ClienteClickUp("")`
+    (`tiene_token=False`): los endpoints caen a `[]`/aviso sin llamar a ClickUp (CA1/CA3).
+    El token de A jamás se resuelve para B (CA4: el repo filtra por la empresa del JWT).
+    El token vive sólo en el backend (regla de oro #3). En tests se sobrescribe con un
+    doble vía `app.dependency_overrides` (nunca se llama a ClickUp real)."""
+    integracion = await repo.obtener_por_empresa_y_proveedor(empresa_id, "clickup")
+    if integracion is None:
+        return ClienteClickUp("")
+    token = await secretos.obtener(integracion.token_ref)
+    return ClienteClickUp(token or "")

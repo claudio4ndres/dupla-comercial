@@ -1020,6 +1020,12 @@ h1.page {
   background: #f1ead6;
   color: #8a7a4a;
 }
+/* "Reconectar": el conector existe pero el token se revocó/expiró (CA6). Ámbar
+   de atención (distinto de "Conectado" en verde y "Sin conectar" en gris). */
+.conector-estado.warn {
+  background: #fbe7c6;
+  color: #9a5b00;
+}
 .conector-body {
   display: flex;
   align-items: center;

@@ -36,7 +36,9 @@ async def estado_correo(
     Sin integración → todo en null (CA1). Con integración → proveedor/estado/casilla
     (CA2). Nunca incluye tokens (CA5, garantizado por el `response_model`).
     """
-    integracion = await repo.obtener_por_empresa(empresa_id)
+    # Por proveedor explícito: una empresa puede tener gmail Y clickup; el estado de
+    # correo mira sólo su integración de gmail (no se confunde con la de clickup).
+    integracion = await repo.obtener_por_empresa_y_proveedor(empresa_id, "gmail")
     if integracion is None:
         return EstadoCorreo()
     return EstadoCorreo(
@@ -114,7 +116,9 @@ async def desconectar_correo(
     (refresh token) y elimina la fila de `integraciones`. Idempotente: si no hay
     integración, responde 204 igual.
     """
-    integracion = await repo.obtener_por_empresa(empresa_id)
+    # Desconecta SÓLO gmail (por proveedor explícito): no toca la integración de
+    # clickup si la empresa también la tiene conectada.
+    integracion = await repo.obtener_por_empresa_y_proveedor(empresa_id, "gmail")
     if integracion is not None:
         await secretos.borrar(integracion.token_ref)
-        await repo.eliminar(empresa_id)
+        await repo.eliminar_por_proveedor(empresa_id, "gmail")

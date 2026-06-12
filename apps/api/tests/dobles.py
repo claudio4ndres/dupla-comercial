@@ -2,6 +2,7 @@
 from types import SimpleNamespace
 
 from app.servicios.gmail import ErrorAutenticacionGmail, MensajeCorreo
+from app.servicios.oauth_clickup import CredencialesClickUp
 from app.servicios.oauth_gmail import CredencialesGmail
 
 
@@ -187,6 +188,22 @@ class ClienteOAuthGoogleFake:
         self.codigos_canjeados: list[str] = []
 
     async def canjear_codigo(self, code: str) -> CredencialesGmail:
+        self.codigos_canjeados.append(code)
+        return self.credenciales
+
+
+class ClienteOAuthClickUpFake:
+    """Doble del cliente OAuth de ClickUp: canjea el `code` por un access token fijo y
+    registra los códigos vistos (para verificar que no se canjea con state inválido).
+    Cero red, cero credenciales reales (CA8)."""
+
+    def __init__(self, credenciales: CredencialesClickUp | None = None):
+        self.credenciales = credenciales or CredencialesClickUp(
+            access_token="access-de-prueba"
+        )
+        self.codigos_canjeados: list[str] = []
+
+    async def canjear_codigo(self, code: str) -> CredencialesClickUp:
         self.codigos_canjeados.append(code)
         return self.credenciales
 

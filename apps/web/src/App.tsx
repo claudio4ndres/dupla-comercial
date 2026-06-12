@@ -359,6 +359,7 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
               onConectar={conectarProveedor}
               onDesconectar={desconectarProveedor}
               onIrA={irA}
+              onNavegar={onNavegar}
             />
           )}
 
