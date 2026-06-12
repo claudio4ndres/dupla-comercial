@@ -40,7 +40,12 @@ def test_url_por_defecto_apunta_a_google_con_scopes_gmail_y_drive():
     assert SCOPE_GMAIL_LECTURA in scopes
     assert SCOPE_DRIVE_LECTURA in scopes
     assert q["state"] == ["st-123"]  # anti-CSRF
+    # `access_type=offline` + `prompt=consent` juntos fuerzan a Google a devolver
+    # SIEMPRE un refresh token, también al RE-conectar una casilla ya autorizada
+    # (sin `prompt=consent`, Google omite el refresh en reautorizaciones y el
+    # poller queda sin poder refrescar → integración en 'reconectar').
     assert q["access_type"] == ["offline"]  # necesario para el refresh token
+    assert q["prompt"] == ["consent"]  # re-emite el refresh token al reconectar
     assert q["redirect_uri"] == ["https://app.test/callback"]
 
 

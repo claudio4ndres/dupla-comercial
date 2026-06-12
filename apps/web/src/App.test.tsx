@@ -182,6 +182,47 @@ describe('App (arnés)', () => {
     expect(screen.getByText(/Metro de Santiago/i)).toBeInTheDocument()
   })
 
+  it('con la bandeja en "reconectar", igual muestra las solicitudes ya ingeridas y el banner de reconectar', async () => {
+    const user = userEvent.setup()
+    // Bug en prod: hay correos ingeridos pero el token de Gmail quedó en
+    // 'reconectar'. La bandeja debe SEGUIR mostrando esos correos (el backend ya
+    // filtra por empresa con RLS) y, además, avisar que hay que reconectar para
+    // los FUTUROS correos. Antes el front vaciaba la lista y la bandeja salía vacía.
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      if (u.includes('/solicitudes')) {
+        return Promise.resolve(
+          respuesta([
+            {
+              id: 's1',
+              remitente: 'Carolina Herrera',
+              correo_origen: 'eventos@212.cl',
+              asunto: '212 VIP — activación de fragancia',
+              cuerpo: 'Necesitamos cotizar una activación en retail…',
+              resumen: 'Activación 212 VIP en retail',
+              tipo: 'tipo_1',
+              estado: 'nueva',
+            },
+          ]),
+        )
+      }
+      // GET /integraciones/correo → bandeja con el token caído (reconectar).
+      return Promise.resolve(
+        respuesta({ proveedor: 'gmail', estado: 'reconectar', casilla: 'javier@capsulab.cl' }),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await entrarABandeja(user)
+
+    // Los correos ya ingeridos SIGUEN visibles aunque el estado sea 'reconectar'.
+    expect(await screen.findByText(/Carolina Herrera/i)).toBeInTheDocument()
+    // Y el banner de reconectar sigue arriba (avisa para los próximos correos).
+    expect(screen.getByText(/Reconecta tu bandeja/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Reconectar/i })).toBeInTheDocument()
+  })
+
   it('en la bandeja, ofrece conectar un proveedor de correo', async () => {
     const user = userEvent.setup()
     render(<App />)

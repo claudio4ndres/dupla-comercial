@@ -149,18 +149,21 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     }
   }, [empresa])
 
-  // Carga las solicitudes REALES cuando la bandeja está conectada y cada vez que
-  // se vuelve a la pantalla de bandeja (así aparecen los correos que el poller
-  // fue ingiriendo). Sin conexión, la lista queda vacía (ya no hay mock).
+  // Carga las solicitudes REALES cada vez que se entra a la bandeja (así aparecen
+  // los correos que el poller fue ingiriendo). NO se exige estado 'conectado': el
+  // backend ya filtra por empresa con RLS y, si el token quedó en 'reconectar',
+  // los correos YA ingeridos deben seguir viéndose (el banner de 'reconectar' solo
+  // avisa que la PRÓXIMA ingesta necesita reconectar). Solo se vacía cuando la
+  // bandeja está sin conectar del todo (sin proveedor): ahí no hay nada que pedir.
   useEffect(() => {
-    if (estadoCorreo.estado !== 'conectado') {
-      // Sin bandeja conectada no hay solicitudes que mostrar. Limpiar aquí es
+    if (pantalla !== 'inbox') return
+    if (estadoCorreo.proveedor === null) {
+      // Sin proveedor conectado no hay solicitudes que mostrar. Limpiar aquí es
       // sincronizar con el backend (no es estado derivado), de ahí el disable.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSolicitudes([])
       return
     }
-    if (pantalla !== 'inbox') return
     let activo = true
     obtenerSolicitudes().then((s) => {
       if (activo) setSolicitudes(s)
@@ -168,7 +171,7 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     return () => {
       activo = false
     }
-  }, [empresa, estadoCorreo.estado, pantalla])
+  }, [empresa, estadoCorreo.proveedor, pantalla])
 
   // Carga la lista REAL de propuestas al entrar a la pantalla "Propuestas" del
   // menú (y al cambiar de empresa). Sin sesión/backend, queda vacía (sin mock).
