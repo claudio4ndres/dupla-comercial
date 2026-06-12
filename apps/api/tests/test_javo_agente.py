@@ -10,9 +10,11 @@ import asyncio
 import json
 from uuid import uuid4
 
+from types import SimpleNamespace
+
 from app.esquemas import MensajeConversacion
 from app.repositorios.catalogo import ItemCatalogo, RepositorioCatalogoEnMemoria
-from app.servicios.busqueda_internet import ResultadoBusqueda
+from app.servicios.busqueda_internet import ProveedorBusquedaWeb, ResultadoBusqueda
 from app.servicios.javo import MAX_ITERACIONES, TOPE_INTERNET, responder_javo
 from tests.dobles import (
     ClienteAnthropicGuionFake,
@@ -212,6 +214,66 @@ def test_internet_se_ofrece_y_ejecuta_si_se_pide():
     assert "buscar_en_internet" in nombres
     assert prov.veces == 1
     assert len(resp.fuentes) >= 1
+
+
+# ── T9 · CA3/CA6 (Tipo 2 con el PROVEEDOR REAL: web search nativo) ────────────
+class _ClienteWebSearchFake:
+    """Doble del cliente Anthropic que usa el `ProveedorBusquedaWeb` real: devuelve una
+    respuesta con bloques `web_search_tool_result` (forma EXACTA del SDK). Cero red."""
+
+    def __init__(self):
+        self.messages = self
+
+    async def create(self, **kwargs):
+        return SimpleNamespace(
+            content=[
+                SimpleNamespace(
+                    type="server_tool_use",
+                    id="srvtoolu_1",
+                    name="web_search",
+                    input={"query": "activaciones F1"},
+                ),
+                SimpleNamespace(
+                    type="web_search_tool_result",
+                    tool_use_id="srvtoolu_1",
+                    content=[
+                        {
+                            "type": "web_search_result",
+                            "title": "Activación Red Bull en la F1",
+                            "url": "https://ejemplo.cl/redbull-f1",
+                            "page_age": "March 1, 2026",
+                        }
+                    ],
+                ),
+            ]
+        )
+
+
+def test_internet_usa_resultados_reales_del_proveedor_web_y_los_cita():
+    # Tipo 2 + el usuario pide internet → Javo llama `buscar_en_internet`, que ejecuta el
+    # PROVEEDOR REAL (web search nativo de Anthropic, mockeado). Los resultados REALES
+    # parseados (título/url) llegan al modelo y quedan citados como Fuente (CA6).
+    proveedor_real = ProveedorBusquedaWeb(_ClienteWebSearchFake())
+    cliente = ClienteAnthropicGuionFake(
+        [
+            respuesta_tool_use("buscar_en_internet", {"consulta": "activaciones F1"}),
+            respuesta_texto("Mira esta referencia de Red Bull en la F1."),
+        ]
+    )
+    resp = _correr(
+        "t2", _msg("busca en internet referencias de la F1"), cliente,
+        repo_catalogo=RepositorioCatalogoEnMemoria([]),
+        proveedor_busqueda=proveedor_real, empresa_id=EMPRESA,
+    )
+    # El resultado REAL (título + url) se citó como Fuente.
+    assert any(
+        f.titulo == "Activación Red Bull en la F1"
+        and f.referencia == "https://ejemplo.cl/redbull-f1"
+        for f in resp.fuentes
+    )
+    # Y se le pasó al modelo en la 2ª llamada (tool_result con la url real).
+    segunda = json.dumps(cliente.llamadas[1]["messages"], ensure_ascii=False)
+    assert "https://ejemplo.cl/redbull-f1" in segunda
 
 
 # ── T9/T11 · CA11 (tope de internet) ─────────────────────────────────────────

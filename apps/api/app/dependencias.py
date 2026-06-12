@@ -19,7 +19,7 @@ from app.repositorios.miembros_supabase import RepositorioMiembrosSupabase
 from app.repositorios.propuestas_supabase import RepositorioPropuestasSupabase
 from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
 from app.repositorios.tareas_supabase import RepositorioTareasSupabase
-from app.servicios.busqueda_internet import ProveedorBusquedaCurado
+from app.servicios.busqueda_internet import ProveedorBusquedaWeb
 from app.servicios.clickup_real import ClienteClickUp
 from app.servicios.cliente_anthropic import ClienteAnthropicHttpx
 from app.servicios.drive_real import ClienteDriveReal, FabricaClienteDriveReal
@@ -285,11 +285,17 @@ def obtener_cliente_anthropic() -> ClienteAnthropicHttpx:
     return ClienteAnthropicHttpx(api_key=obtener_settings().anthropic_api_key)
 
 
-def obtener_proveedor_busqueda() -> ProveedorBusquedaCurado:
-    """Proveedor de búsqueda en internet para Tipo 2 (005). Para la demo: curado y
-    offline-safe. En tests se sobrescribe con un doble vía `app.dependency_overrides`
-    (CA4: nunca se llama una API real)."""
-    return ProveedorBusquedaCurado()
+def obtener_proveedor_busqueda() -> ProveedorBusquedaWeb:
+    """Proveedor de búsqueda en internet para Tipo 2 (005). En PRODUCCIÓN: el proveedor
+    REAL `ProveedorBusquedaWeb`, que usa el **web search nativo** de Anthropic (server
+    tool `web_search_20260209`) para traer referencias de internet de VERDAD. Se le
+    inyecta el cliente Anthropic real (regla #3: el LLM vive sólo en el backend).
+
+    El gating sigue intacto en `javo.py`: el tool `buscar_en_internet` SÓLO se ofrece en
+    Tipo 2 y SÓLO si el usuario lo pide, con `TOPE_INTERNET` por conversación. En tests se
+    sobrescribe con un doble vía `app.dependency_overrides` (CA4: nunca se llama una API
+    real; cero red, cero tokens)."""
+    return ProveedorBusquedaWeb(obtener_cliente_anthropic())
 
 
 def obtener_resolvedor_empresa() -> ResolvedorEmpresaSupabase:
