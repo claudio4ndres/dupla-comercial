@@ -62,6 +62,7 @@ class RepositorioSolicitudes(Protocol):
         cuerpo: str,
         resumen: str | None,
         tipo: str,
+        creado_en: datetime | None = None,
     ) -> Solicitud: ...
 
 
@@ -127,6 +128,7 @@ class RepositorioSolicitudesEnMemoria:
             resumen=resumen,
             tipo=tipo,
             estado="nueva",
+            creado_en=mensaje.fecha,  # fecha REAL de recepción (para ordenar)
         )
         self._por_id[solicitud.id] = solicitud
         return True
@@ -157,15 +159,18 @@ class RepositorioSolicitudesEnMemoria:
         cuerpo: str,
         resumen: str | None,
         tipo: str,
+        creado_en: datetime | None = None,
     ) -> Solicitud:
-        """Actualiza cuerpo + resumen + tipo de una solicitud ya existente (reproceso),
-        sin tocar su estado. El cuerpo se actualiza porque al re-bajar se recupera el
-        texto (p. ej. de un correo solo-HTML que entró vacío)."""
+        """Actualiza cuerpo + resumen + tipo (y la fecha real `creado_en` si se pasa)
+        de una solicitud existente (reproceso), sin tocar su estado. El cuerpo y la
+        fecha se actualizan al re-bajar el correo (recupera texto vacío y la fecha real
+        de recepción, para ordenar bien la bandeja)."""
         solicitud = await self.obtener(solicitud_id, empresa_id)
         if solicitud is None:
             raise KeyError(solicitud_id)
-        actualizada = solicitud.model_copy(
-            update={"cuerpo": cuerpo, "resumen": resumen, "tipo": tipo}
-        )
+        cambios = {"cuerpo": cuerpo, "resumen": resumen, "tipo": tipo}
+        if creado_en is not None:
+            cambios["creado_en"] = creado_en
+        actualizada = solicitud.model_copy(update=cambios)
         self._por_id[solicitud_id] = actualizada
         return actualizada

@@ -88,6 +88,17 @@ def _extraer_html(payload: dict) -> str:
     return ""
 
 
+def _a_fecha(internal_date) -> "datetime | None":
+    """`internalDate` de Gmail (epoch en milisegundos, como string) → datetime UTC.
+    Es la fecha de RECEPCIÓN del correo; la usamos para ordenar la bandeja."""
+    if not internal_date:
+        return None
+    try:
+        return datetime.fromtimestamp(int(internal_date) / 1000, tz=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
 def _a_mensaje(datos: dict) -> MensajeCorreo:
     """Mapea la respuesta de `users.messages.get` a nuestro `MensajeCorreo`."""
     payload = datos.get("payload", {})
@@ -103,6 +114,7 @@ def _a_mensaje(datos: dict) -> MensajeCorreo:
         asunto=cabeceras.get("subject", ""),
         # text/plain si existe; si no (correo solo-HTML), caemos al HTML limpiado.
         cuerpo=_extraer_texto_plano(payload) or _extraer_html(payload),
+        fecha=_a_fecha(datos.get("internalDate")),
     )
 
 

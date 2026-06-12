@@ -7,6 +7,7 @@ usuario; nunca se reutiliza entre usuarios.
 
 Cero red en los tests: se inyecta un `httpx.AsyncClient` con transporte mockeado.
 """
+from datetime import datetime
 from uuid import UUID
 
 import httpx
@@ -70,7 +71,10 @@ class RepositorioSolicitudesSupabase:
         # filtra en el backend; la barrera multi-tenant es la RLS, no este código.
         resp = await self._peticion(
             "GET",
-            "/solicitudes?select=*",
+            # empresa_id explícito (defensa en profundidad: con JWT lo respalda la RLS;
+            # con service-role en el reproceso es la única barrera). Más reciente primero
+            # por la fecha REAL del correo (creado_en).
+            f"/solicitudes?select=*&empresa_id=eq.{empresa_id}&order=creado_en.desc",
             headers=self._headers(),
         )
         resp.raise_for_status()
@@ -95,13 +99,17 @@ class RepositorioSolicitudesSupabase:
         cuerpo: str,
         resumen: str | None,
         tipo: str,
+        creado_en: datetime | None = None,
     ) -> Solicitud:
+        cambios: dict = {"cuerpo": cuerpo, "resumen": resumen, "tipo": tipo}
+        if creado_en is not None:
+            cambios["creado_en"] = creado_en.isoformat()
         # service-role: filtramos por id Y empresa_id (sin RLS que nos respalde).
         resp = await self._peticion(
             "PATCH",
             f"/solicitudes?id=eq.{solicitud_id}&empresa_id=eq.{empresa_id}",
             headers=self._headers({"Prefer": "return=representation"}),
-            json={"cuerpo": cuerpo, "resumen": resumen, "tipo": tipo},
+            json=cambios,
         )
         resp.raise_for_status()
         filas = resp.json()
@@ -136,23 +144,26 @@ class RepositorioSolicitudesSupabase:
         parcial `(empresa_id, gmail_msg_id)`. `resolution=ignore-duplicates` hace
         que un duplicado no falle y devuelva sin filas → `False`. `resumen`/`tipo`
         vienen del clasificador (si corrió); si no, queda 'sin_clasificar'."""
+        fila = {
+            "empresa_id": str(empresa_id),
+            "gmail_msg_id": mensaje.gmail_msg_id,
+            "remitente": mensaje.remitente,
+            "correo_origen": mensaje.correo_origen,
+            "asunto": mensaje.asunto,
+            "cuerpo": mensaje.cuerpo,
+            "resumen": resumen,
+            "tipo": tipo,
+            "estado": "nueva",
+        }
+        if mensaje.fecha:  # fecha REAL de recepción → la bandeja se ordena por ella
+            fila["creado_en"] = mensaje.fecha.isoformat()
         resp = await self._peticion(
             "POST",
             "/solicitudes",
             headers=self._headers(
                 {"Prefer": "return=representation,resolution=ignore-duplicates"}
             ),
-            json={
-                "empresa_id": str(empresa_id),
-                "gmail_msg_id": mensaje.gmail_msg_id,
-                "remitente": mensaje.remitente,
-                "correo_origen": mensaje.correo_origen,
-                "asunto": mensaje.asunto,
-                "cuerpo": mensaje.cuerpo,
-                "resumen": resumen,
-                "tipo": tipo,
-                "estado": "nueva",
-            },
+            json=fila,
         )
         resp.raise_for_status()
         filas = resp.json()

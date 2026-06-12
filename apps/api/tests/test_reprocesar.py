@@ -8,7 +8,7 @@ from app.repositorios.integraciones import (
     RepositorioIntegracionesEnMemoria,
 )
 from app.repositorios.solicitudes import RepositorioSolicitudesEnMemoria, Solicitud
-from app.servicios.reprocesar import reprocesar_sin_clasificar
+from app.servicios.reprocesar import reprocesar_correos
 from tests.dobles import ClienteGmailFake, ClienteGmailQueFallaAuth
 
 EMPRESA = uuid4()
@@ -52,7 +52,7 @@ async def test_reprocesa_recupera_cuerpo_y_clasifica():
     repo_sol = RepositorioSolicitudesEnMemoria([sol])
     repo_int = RepositorioIntegracionesEnMemoria([_integracion()])
 
-    res = await reprocesar_sin_clasificar(
+    res = await reprocesar_correos(
         _integracion(), ClienteGmailFake([]), repo_sol, repo_int, _clasif_ok
     )
 
@@ -70,7 +70,7 @@ async def test_reprocesa_no_toca_si_la_clasificacion_falla():
     repo_sol = RepositorioSolicitudesEnMemoria([sol])
     repo_int = RepositorioIntegracionesEnMemoria([_integracion()])
 
-    res = await reprocesar_sin_clasificar(
+    res = await reprocesar_correos(
         _integracion(), ClienteGmailFake([]), repo_sol, repo_int, _clasif_falla
     )
 
@@ -84,7 +84,7 @@ async def test_reprocesa_marca_reconectar_si_falla_auth():
     repo_sol = RepositorioSolicitudesEnMemoria([sol])
     repo_int = RepositorioIntegracionesEnMemoria([_integracion()])
 
-    res = await reprocesar_sin_clasificar(
+    res = await reprocesar_correos(
         _integracion(), ClienteGmailQueFallaAuth(), repo_sol, repo_int, _clasif_ok
     )
 

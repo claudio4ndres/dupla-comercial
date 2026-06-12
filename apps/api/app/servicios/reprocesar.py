@@ -33,24 +33,27 @@ class ResultadoReproceso(BaseModel):
     reclasificadas: int
 
 
-async def reprocesar_sin_clasificar(
+async def reprocesar_correos(
     integracion: Integracion,
     gmail: ClienteGmail,
     repo_solicitudes: RepositorioSolicitudes,
     repo_integraciones: RepositorioIntegraciones,
     clasificar: Clasificador,
 ) -> ResultadoReproceso:
-    """Re-baja y re-clasifica las solicitudes 'sin_clasificar' de UNA empresa.
+    """Re-baja TODOS los correos de UNA empresa y los pone al día EN SITIO.
 
-    Por cada una: re-baja el correo por su `gmail_msg_id` (recupera el cuerpo, incluso
-    de correos solo-HTML que entraron vacíos), clasifica `asunto + cuerpo` y actualiza
-    en sitio. Si el refresh del token falla, marca 'reconectar' y corta esta casilla
-    (CA7). Si una clasificación puntual falla (LLM caído/correo vacío), la deja
-    pendiente y sigue con las demás.
+    Por cada solicitud: re-baja el correo por su `gmail_msg_id` y actualiza
+      - la **fecha real** de recepción (`creado_en`) → la bandeja se ordena bien,
+      - el **cuerpo** (recupera texto de correos solo-HTML que entraron vacíos),
+      - y, **sólo si estaba 'sin_clasificar'**, la clasificación (resumen + tipo).
+
+    Conserva la clasificación de las que ya estaban resueltas (no re-clasifica de
+    más). Si el refresh del token falla, marca 'reconectar' y corta (CA7). Si una
+    clasificación puntual falla, deja esa pendiente y sigue. Idempotente y re-corrible.
     """
-    pendientes = await repo_solicitudes.listar_sin_clasificar(integracion.empresa_id)
+    todas = await repo_solicitudes.listar(integracion.empresa_id)
     reclasificadas = 0
-    for sol in pendientes:
+    for sol in todas:
         if not sol.gmail_msg_id:
             continue  # sin id de Gmail no hay cómo re-bajar
         try:
@@ -60,28 +63,32 @@ async def reprocesar_sin_clasificar(
             break
         if mensaje is None:
             continue  # el correo ya no existe en Gmail
-        # Clasificamos asunto + cuerpo: así un correo con cuerpo vacío igual se
-        # clasifica por su asunto (que suele ser informativo).
-        texto = f"{mensaje.asunto}\n\n{mensaje.cuerpo}".strip()
-        try:
-            clasif = await clasificar(texto)
-        except Exception as exc:  # noqa: BLE001 — el LLM no debe tumbar el reproceso
-            _LOG.warning(
-                "Reproceso: no se pudo clasificar %s (%s); sigue pendiente.",
-                sol.gmail_msg_id,
-                type(exc).__name__,
-            )
-            continue
+        resumen, tipo = sol.resumen, sol.tipo  # conservamos lo ya clasificado
+        if sol.tipo == "sin_clasificar":
+            # asunto + cuerpo: un correo con cuerpo vacío igual se clasifica por asunto.
+            texto = f"{mensaje.asunto}\n\n{mensaje.cuerpo}".strip()
+            try:
+                clasif = await clasificar(texto)
+                resumen, tipo = clasif.resumen, clasif.tipo
+                reclasificadas += 1
+            except Exception as exc:  # noqa: BLE001 — el LLM no debe tumbar el reproceso
+                _LOG.warning(
+                    "Reproceso: no se pudo clasificar %s (%s); sigue pendiente.",
+                    sol.gmail_msg_id,
+                    type(exc).__name__,
+                )
+        # Actualizamos SIEMPRE la fecha real + el cuerpo re-bajado (aunque no se
+        # re-clasifique): es lo que ordena la bandeja por recencia.
         await repo_solicitudes.actualizar_reproceso(
             sol.id,
             integracion.empresa_id,
             cuerpo=mensaje.cuerpo,
-            resumen=clasif.resumen,
-            tipo=clasif.tipo,
+            resumen=resumen,
+            tipo=tipo,
+            creado_en=mensaje.fecha,
         )
-        reclasificadas += 1
     return ResultadoReproceso(
         empresa_id=integracion.empresa_id,
-        revisadas=len(pendientes),
+        revisadas=len(todas),
         reclasificadas=reclasificadas,
     )

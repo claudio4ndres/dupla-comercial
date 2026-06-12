@@ -6,6 +6,7 @@ ingesta y los tests trabajen contra un doble (CA6: cero llamadas reales, cero
 credenciales reales). La Regla de oro #3 (credenciales solo en el backend) se cumple
 porque el refresh del token y el secreto viven detrás de esta interfaz.
 """
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel
@@ -22,6 +23,7 @@ class MensajeCorreo(BaseModel):
     correo_origen: str = ""   # email del From
     asunto: str = ""
     cuerpo: str = ""          # texto plano del mensaje
+    fecha: datetime | None = None  # fecha de RECEPCIÓN (internalDate de Gmail), para ordenar
 
 
 class ErrorAutenticacionGmail(Exception):

@@ -20,7 +20,7 @@ from app.dependencias import (
 from app.esquemas import ResumenPoller, ResumenReproceso
 from app.servicios.clasificador import clasificar_solicitud
 from app.servicios.ingesta_correo import ingerir_correos_nuevos
-from app.servicios.reprocesar import reprocesar_sin_clasificar
+from app.servicios.reprocesar import reprocesar_correos
 
 router = APIRouter(prefix="/interno", tags=["interno"])
 
@@ -108,7 +108,7 @@ async def reprocesar_correo(
     for integracion in integraciones:
         try:
             gmail = fabrica_gmail.crear(integracion)
-            res = await reprocesar_sin_clasificar(
+            res = await reprocesar_correos(
                 integracion,
                 gmail,
                 repo_solicitudes,

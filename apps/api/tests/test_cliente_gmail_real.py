@@ -271,6 +271,26 @@ def test_correo_solo_html_cae_al_html_y_no_queda_vacio():
     assert m.cuerpo.strip() != ""  # ya no es vacío → no más 400
 
 
+def test_a_mensaje_captura_la_fecha_real_de_recepcion():
+    # internalDate de Gmail (epoch en ms) → fecha real del correo, para ordenar la
+    # bandeja por recencia en vez de por la hora de ingesta.
+    from datetime import datetime, timezone
+
+    datos = {
+        "id": "m-fecha",
+        "internalDate": "1717200000000",  # epoch en milisegundos
+        "payload": {
+            "mimeType": "text/plain",
+            "headers": [{"name": "Subject", "value": "x"}],
+            "body": {"data": _b64url("hola")},
+        },
+    }
+
+    m = _a_mensaje(datos)
+
+    assert m.fecha == datetime.fromtimestamp(1717200000, tz=timezone.utc)
+
+
 # --- Camino sin cursor: fallback `after:` + cursor desde el historyId actual --
 
 async def test_sin_cursor_usa_fallback_y_fija_cursor_desde_profile():
