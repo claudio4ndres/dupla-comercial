@@ -53,6 +53,34 @@ class _ProveedorFake:
         return list(self._resultados)
 
 
+class _ArchivoFake:
+    """Imita un `ArchivoDrive` (id/nombre/tipo_mime) para los tests de Javo→Drive."""
+
+    def __init__(self, id, nombre, tipo_mime):
+        self.id = id
+        self.nombre = nombre
+        self.tipo_mime = tipo_mime
+
+
+class _DriveFake:
+    """Doble del `ClienteDriveReal`: busca en una lista fija y devuelve contenido fijo
+    por file_id. Registra las consultas y lecturas (cero red, cero credenciales)."""
+
+    def __init__(self, archivos=None, contenidos=None):
+        self._archivos = archivos or []
+        self._contenidos = contenidos or {}
+        self.consultas: list = []
+        self.lecturas: list = []
+
+    async def buscar_archivos(self, consulta):
+        self.consultas.append(consulta)
+        return list(self._archivos)
+
+    async def leer_documento(self, file_id, tipo_mime):
+        self.lecturas.append((file_id, tipo_mime))
+        return self._contenidos.get(file_id, "")
+
+
 def _correr(*args, **kw):
     return asyncio.run(responder_javo(*args, **kw))
 
@@ -235,3 +263,96 @@ def test_loop_acotado():
     )
     assert len(cliente.llamadas) <= MAX_ITERACIONES
     assert resp.texto  # devuelve algo, no se cuelga ni revienta
+
+
+# ── Drive REAL en vivo: buscar → leer → usar el valor real y citarlo ──────────
+def test_buscar_en_drive_consulta_el_drive_real_y_lista_los_docs():
+    # Con un cliente Drive cableado, `buscar_en_drive` busca en TODO el Drive (no en la
+    # tabla `catalogo`): devuelve los docs encontrados (nombre+id+mime) al modelo.
+    drive = _DriveFake(
+        archivos=[
+            _ArchivoFake("doc1", "Tarifario promotores 2026",
+                         "application/vnd.google-apps.document"),
+        ]
+    )
+    cliente = ClienteAnthropicGuionFake(
+        [
+            respuesta_tool_use("buscar_en_drive", {"consulta": "tarifario promotores"}),
+            respuesta_texto("Encontré el tarifario."),
+        ]
+    )
+    resp = _correr(
+        "t1", _msg("cotiza promotoras"), cliente,
+        repo_catalogo=RepositorioCatalogoEnMemoria([]),
+        proveedor_busqueda=_ProveedorFake(), empresa_id=EMPRESA, cliente_drive=drive,
+    )
+    assert drive.consultas == ["tarifario promotores"]
+    # El backend le pasó al modelo los docs reales (id+nombre+mime) en la 2ª llamada.
+    segunda = json.dumps(cliente.llamadas[1]["messages"], ensure_ascii=False).lower()
+    assert "doc1" in segunda and "tarifario promotores 2026" in segunda
+    assert "vnd.google-apps.document" in segunda
+    # Las tools de Drive están declaradas (buscar + leer documento).
+    nombres = [t["name"] for t in cliente.llamadas[0]["tools"]]
+    assert "buscar_en_drive" in nombres and "leer_documento_drive" in nombres
+    # El doc encontrado quedó como Fuente citable.
+    assert any("Tarifario promotores 2026" in f.titulo for f in resp.fuentes)
+
+
+def test_javo_lee_el_doc_del_drive_usa_el_valor_real_y_lo_cita():
+    # Flujo completo: busca → encuentra → LEE el doc → usa el número real y lo cita.
+    drive = _DriveFake(
+        archivos=[
+            _ArchivoFake("doc1", "Tarifario promotores 2026",
+                         "application/vnd.google-apps.document"),
+        ],
+        contenidos={"doc1": "Promotora uniformada: $120.000 por día"},
+    )
+    cliente = ClienteAnthropicGuionFake(
+        [
+            respuesta_tool_use("buscar_en_drive", {"consulta": "promotoras"}, id="t1"),
+            respuesta_tool_use(
+                "leer_documento_drive",
+                {"file_id": "doc1", "tipo_mime": "application/vnd.google-apps.document"},
+                id="t2",
+            ),
+            respuesta_texto(
+                "La promotora va a $120.000 por día (Fuente: Tarifario promotores 2026)."
+            ),
+        ]
+    )
+    resp = _correr(
+        "t1", _msg("cotiza promotoras"), cliente,
+        repo_catalogo=RepositorioCatalogoEnMemoria([]),
+        proveedor_busqueda=_ProveedorFake(), empresa_id=EMPRESA, cliente_drive=drive,
+    )
+    assert drive.lecturas == [("doc1", "application/vnd.google-apps.document")]
+    # El contenido real del doc llegó al modelo (3ª llamada).
+    tercera = json.dumps(cliente.llamadas[2]["messages"], ensure_ascii=False)
+    assert "120.000" in tercera
+    assert "$120.000 por día" in resp.texto
+
+
+def test_sin_cliente_drive_las_tools_degradan_sin_romper():
+    # Empresa sin Drive/token: `cliente_drive=None`. Las tools de Drive NO revientan;
+    # avisan "sin acceso a Drive" y el loop sigue (responde con texto, sin colgarse).
+    cliente = ClienteAnthropicGuionFake(
+        [
+            respuesta_tool_use("buscar_en_drive", {"consulta": "promotoras"}, id="t1"),
+            respuesta_tool_use(
+                "leer_documento_drive",
+                {"file_id": "x", "tipo_mime": "application/vnd.google-apps.document"},
+                id="t2",
+            ),
+            respuesta_texto("No tengo el Drive conectado; pásame el valor."),
+        ]
+    )
+    resp = _correr(
+        "t1", _msg("cotiza promotoras"), cliente,
+        repo_catalogo=RepositorioCatalogoEnMemoria([]),
+        proveedor_busqueda=_ProveedorFake(), empresa_id=EMPRESA, cliente_drive=None,
+    )
+    assert resp.texto  # no se cuelga ni revienta
+    segunda = json.dumps(cliente.llamadas[1]["messages"], ensure_ascii=False).lower()
+    assert "sin acceso a drive" in segunda
+    tercera = json.dumps(cliente.llamadas[2]["messages"], ensure_ascii=False).lower()
+    assert "sin acceso a drive" in tercera

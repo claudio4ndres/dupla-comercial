@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.dependencias import (
     obtener_cliente_anthropic,
+    obtener_cliente_drive_conversacion,
     obtener_empresa_actual,
     obtener_proveedor_busqueda,
     obtener_repositorio_catalogo,
@@ -35,6 +36,9 @@ def _cliente_http(repo, *, anthropic=None, empresa_id=EMPRESA_A, con_empresa=Tru
         lambda: RepositorioCatalogoEnMemoria([])
     )
     app.dependency_overrides[obtener_proveedor_busqueda] = lambda: ProveedorBusquedaCurado()
+    # Sin Drive cableado en estos tests (foco en la persistencia): None → las tools de
+    # Drive degradan limpio dentro de Javo (no se toca Supabase/red).
+    app.dependency_overrides[obtener_cliente_drive_conversacion] = lambda: None
     if con_empresa:
         app.dependency_overrides[obtener_empresa_actual] = lambda: empresa_id
     return TestClient(app)

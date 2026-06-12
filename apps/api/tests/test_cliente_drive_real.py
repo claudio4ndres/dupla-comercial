@@ -184,6 +184,149 @@ async def test_listar_carpetas_pide_solo_carpetas_y_parsea_la_respuesta():
     assert "trashed=false" in q
 
 
+# --- buscar_archivos: busca en TODO el Drive (nombre + contenido) -------------
+
+async def test_buscar_archivos_busca_en_todo_el_drive_por_nombre_y_contenido():
+    # Javo busca en vivo en TODO el Drive (sin acotar a una carpeta): por nombre Y por
+    # contenido (fullText). Verifica el `q` y el parseo de la respuesta.
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    files = [
+        {"id": "doc1", "name": "Tarifario promotores 2026",
+         "mimeType": "application/vnd.google-apps.document"},
+        {"id": "sht1", "name": "Costos catering",
+         "mimeType": "application/vnd.google-apps.spreadsheet"},
+    ]
+    handler = _ruteador(registro, files=files)
+    cliente = ClienteDriveReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(handler),
+    )
+
+    archivos = await cliente.buscar_archivos("tarifario")
+
+    assert [a.nombre for a in archivos] == ["Tarifario promotores 2026", "Costos catering"]
+    a = archivos[0]
+    assert isinstance(a, ArchivoDrive)
+    assert a.id == "doc1"
+    assert a.tipo_mime == "application/vnd.google-apps.document"
+
+    # El refresh OAuth ocurrió y el listado usó el access token fresco.
+    token_req = next(r for r in registro if r.url.path.endswith("/token"))
+    assert REFRESH in token_req.content.decode()
+    files_req = next(r for r in registro if r.url.path.endswith("/files"))
+    assert files_req.headers["authorization"] == "Bearer ya29.token-fresco"
+    # El `q` busca en TODO el Drive: por nombre (name contains) Y contenido (fullText).
+    q = files_req.url.params["q"]
+    assert "name contains 'tarifario'" in q
+    assert "fullText contains 'tarifario'" in q
+    assert "trashed=false" in q
+    assert files_req.url.params["fields"] == "files(id,name,mimeType)"
+
+
+async def test_buscar_archivos_escapa_comillas_simples_de_la_consulta():
+    # Una consulta con comilla simple no debe romper el `q` de Drive (inyección).
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    cliente = ClienteDriveReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(_ruteador(registro, files=[])),
+    )
+
+    await cliente.buscar_archivos("l'oréal")
+
+    files_req = next(r for r in registro if r.url.path.endswith("/files"))
+    q = files_req.url.params["q"]
+    # La comilla simple va escapada (Drive usa \' dentro de cadenas con comilla simple).
+    assert "l\\'oréal" in q
+
+
+# --- leer_documento: exporta el contenido a texto plano ----------------------
+
+def _ruteador_export(registro: list, *, contenido: str, content_type: str):
+    """Handler que ademas del /token responde el /files/{id}/export con texto."""
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        registro.append(req)
+        path = req.url.path
+        if path.endswith("/token"):
+            return httpx.Response(
+                200,
+                json={"access_token": "ya29.token-fresco", "expires_in": 3599,
+                      "token_type": "Bearer"},
+            )
+        if path.endswith("/export"):
+            return httpx.Response(
+                200, text=contenido, headers={"content-type": content_type}
+            )
+        return httpx.Response(404, json={"error": "no esperado"})
+
+    return handler
+
+
+async def test_leer_documento_google_doc_exporta_texto_plano():
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    handler = _ruteador_export(
+        registro, contenido="Promotora día: 120000", content_type="text/plain"
+    )
+    cliente = ClienteDriveReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(handler),
+    )
+
+    texto = await cliente.leer_documento(
+        "doc1", "application/vnd.google-apps.document"
+    )
+
+    assert texto == "Promotora día: 120000"
+    export_req = next(r for r in registro if r.url.path.endswith("/export"))
+    assert export_req.headers["authorization"] == "Bearer ya29.token-fresco"
+    assert "/files/doc1/export" in export_req.url.path
+    assert export_req.url.params["mimeType"] == "text/plain"
+
+
+async def test_leer_documento_google_sheet_exporta_csv():
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    handler = _ruteador_export(
+        registro, contenido="item,valor\npromotora,120000", content_type="text/csv"
+    )
+    cliente = ClienteDriveReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(handler),
+    )
+
+    texto = await cliente.leer_documento(
+        "sht1", "application/vnd.google-apps.spreadsheet"
+    )
+
+    assert "promotora,120000" in texto
+    export_req = next(r for r in registro if r.url.path.endswith("/export"))
+    assert export_req.url.params["mimeType"] == "text/csv"
+
+
+async def test_leer_documento_no_exportable_devuelve_aviso_sin_reventar():
+    # Un xlsx/pdf binario no se exporta a texto: devuelve un aviso corto, NO revienta
+    # (ni siquiera toca la red, porque no hay export aplicable).
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    cliente = ClienteDriveReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(_ruteador_export(registro, contenido="", content_type="x")),
+    )
+
+    texto = await cliente.leer_documento("pdf1", "application/pdf")
+
+    assert "no exportable" in texto.lower()
+    assert "application/pdf" in texto
+
+
 # --- Resiliencia del token: refresh inválido → ErrorAutenticacionGmail --------
 
 async def test_refresh_invalido_lanza_error_de_autenticacion():

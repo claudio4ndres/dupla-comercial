@@ -23,6 +23,15 @@ from app.servicios.gmail_real import URL_TOKEN_GOOGLE
 
 BASE_DRIVE = "https://www.googleapis.com/drive/v3"
 
+# Tipos MIME de Google que SÍ se pueden exportar a texto (para que Javo los LEA).
+_MIME_GOOGLE_DOC = "application/vnd.google-apps.document"
+_MIME_GOOGLE_SHEET = "application/vnd.google-apps.spreadsheet"
+# A qué formato de texto exporta cada tipo Google (Docs→texto plano, Sheets→CSV).
+_EXPORT_TEXTO = {
+    _MIME_GOOGLE_DOC: "text/plain",
+    _MIME_GOOGLE_SHEET: "text/csv",
+}
+
 
 @dataclass
 class ArchivoDrive:
@@ -141,6 +150,66 @@ class ClienteDriveReal:
             )
             resp.raise_for_status()
             return [_a_archivo(f) for f in resp.json().get("files", []) or []]
+        finally:
+            if self._cliente is None:
+                await http.aclose()
+
+    async def buscar_archivos(self, consulta: str) -> list[ArchivoDrive]:
+        """Busca en TODO el Drive del usuario (todas las carpetas) por NOMBRE Y
+        CONTENIDO: `name contains` (título) o `fullText contains` (texto indexado del
+        documento), excluyendo la papelera. Es la búsqueda en vivo que usa Javo para
+        encontrar el tarifario/doc que necesita cotizar.
+
+        Escapa las comillas simples de la consulta (Drive las usa como delimitador de
+        cadena en `q`: sin escapar, una comilla rompería la query). Mismo refresh OAuth
+        y manejo de `http`/`finally` que `listar_archivos`.
+        """
+        c = consulta.replace("'", "\\'")
+        http = self._http()
+        try:
+            token = await self._access_token(http)
+            resp = await http.get(
+                f"{BASE_DRIVE}/files",
+                params={
+                    "q": (
+                        f"(name contains '{c}' or fullText contains '{c}') "
+                        "and trashed=false"
+                    ),
+                    "fields": "files(id,name,mimeType)",
+                    "pageSize": 30,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            resp.raise_for_status()
+            return [_a_archivo(f) for f in resp.json().get("files", []) or []]
+        finally:
+            if self._cliente is None:
+                await http.aclose()
+
+    async def leer_documento(self, file_id: str, tipo_mime: str) -> str:
+        """Devuelve el CONTENIDO del archivo como TEXTO para que Javo lo lea.
+
+        * Google Docs → `export?mimeType=text/plain`.
+        * Google Sheets → `export?mimeType=text/csv`.
+        * Otros (xlsx/pdf/imágenes/…) → no se exportan a texto: devuelve un aviso corto
+          (NO revienta, ni siquiera toca la red), para que Javo siga conversando y pida
+          el dato si lo necesita.
+
+        Mismo refresh OAuth y manejo de `http`/`finally` que `listar_archivos`.
+        """
+        formato = _EXPORT_TEXTO.get(tipo_mime)
+        if formato is None:
+            return f"[no exportable a texto: {tipo_mime}]"
+        http = self._http()
+        try:
+            token = await self._access_token(http)
+            resp = await http.get(
+                f"{BASE_DRIVE}/files/{file_id}/export",
+                params={"mimeType": formato},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            resp.raise_for_status()
+            return resp.text
         finally:
             if self._cliente is None:
                 await http.aclose()

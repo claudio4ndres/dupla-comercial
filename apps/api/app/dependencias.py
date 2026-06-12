@@ -22,7 +22,7 @@ from app.repositorios.tareas_supabase import RepositorioTareasSupabase
 from app.servicios.busqueda_internet import ProveedorBusquedaCurado
 from app.servicios.clickup_real import ClienteClickUp
 from app.servicios.cliente_anthropic import ClienteAnthropicHttpx
-from app.servicios.drive_real import FabricaClienteDriveReal
+from app.servicios.drive_real import ClienteDriveReal, FabricaClienteDriveReal
 from app.servicios.empresa import ResolvedorEmpresaSupabase
 from app.servicios.jwt_supabase import VerificadorJwtSupabase
 from app.servicios.gmail_real import FabricaClienteGmailReal
@@ -394,3 +394,24 @@ async def obtener_cliente_clickup(
         return ClienteClickUp("")
     token = await secretos.obtener(integracion.token_ref)
     return ClienteClickUp(token or "")
+
+
+async def obtener_cliente_drive_conversacion(
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+    integraciones=Depends(obtener_repositorio_integraciones),
+    fabrica_drive=Depends(obtener_fabrica_cliente_drive),
+) -> ClienteDriveReal | None:
+    """Cliente Drive REAL de la empresa para que Javo busque EN VIVO en TODO su Drive
+    (todas las carpetas) y lea los documentos con la tarifa real, citándola.
+
+    El Drive cuelga del OAuth de Google: se resuelve desde la integración `gmail` de la
+    empresa (el mismo refresh cubre Gmail y Drive). Si la empresa no tiene integración
+    Gmail/Drive conectada (o no hay `token_ref`), devuelve `None`: dentro de Javo las
+    tools de Drive degradan limpio (avisan "sin acceso a Drive", no revientan). En tests
+    se sobrescribe con un doble vía `app.dependency_overrides` (cero red)."""
+    integracion = await integraciones.obtener_por_empresa_y_proveedor(
+        empresa_id, "gmail"
+    )
+    if integracion is None or not integracion.token_ref:
+        return None
+    return fabrica_drive.crear(integracion)

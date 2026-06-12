@@ -45,7 +45,11 @@ _PERSONA = (
     "(no das menús de opciones sin opinión), anticipas lo que la activación va a "
     "necesitar y lo dejas armado. Tu meta: convertir la solicitud en una PROPUESTA "
     "RESUELTA Y EJECUTABLE: componentes valorizados (con valores REALES del Drive, "
-    "nunca inventados) y las TAREAS que el equipo necesita para ejecutarla."
+    "nunca inventados) y las TAREAS que el equipo necesita para ejecutarla. "
+    "Para los valores: BUSCA en el Drive del usuario el tarifario/documento que "
+    "necesites con `buscar_en_drive`, ÁBRELO con `leer_documento_drive`, usa el número "
+    "REAL que dice el documento y CÍTALO como Fuente (el nombre del archivo). Si no lo "
+    "encuentras en el Drive, pide el dato — NUNCA inventes un precio."
 )
 
 # Guía del Tipo 1 (cotización concreta).
@@ -54,8 +58,10 @@ _GUIA_T1 = (
     "comercial senior, ATERRIZA tú la cotización con criterio profesional: define los "
     "componentes que la activación realmente necesita (catering, promotores, producto, "
     "uniforme, horas, días, valores) sin esperar a que el gestor te dicte cada cosa. "
-    "Usa `buscar_en_drive` para los valores REALES del catálogo ANTES de dar un precio: "
-    "NO inventes (si falta, pídelo o márcalo como estimación). Registra los componentes "
+    "Para cada valor: BUSCA en el Drive del usuario el tarifario/doc con `buscar_en_drive` "
+    "(busca en TODO el Drive por nombre y contenido), ÁBRELO con `leer_documento_drive`, "
+    "usa el número REAL del documento y CÍTALO como Fuente. NO inventes: si no está en el "
+    "Drive, pídelo o márcalo como estimación. Registra los componentes "
     "con `proponer_componentes` (incluye proveedor, días y origen del Drive). Luego "
     "propón las TAREAS de ejecución con `proponer_tareas`: piensa como quien va a "
     "EJECUTAR (reclutar promotores, comprar insumos, producir material, "
@@ -121,24 +127,51 @@ def _tool_buscar_en_drive() -> dict:
     return {
         "name": "buscar_en_drive",
         "description": (
-            "Busca en el catálogo del Drive de la empresa: componentes con su valor "
-            "real (para cotizar) o casos anteriores (para inspirar ideas). Úsala SIEMPRE "
-            "antes de dar un precio; no inventes valores."
+            "Busca EN VIVO en TODO el Drive del usuario (todas las carpetas), por nombre "
+            "Y por contenido: tarifarios, modelos de cotización, casos anteriores. "
+            "Devuelve los documentos encontrados (nombre, id y tipo). Úsala SIEMPRE antes "
+            "de dar un precio para encontrar el tarifario/doc; luego ÁBRELO con "
+            "`leer_documento_drive` para leer el valor real. No inventes valores."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "consulta": {
                     "type": "string",
-                    "description": "Qué buscar (ej. 'promotoras', 'pantalla led').",
+                    "description": "Qué buscar (ej. 'tarifario promotoras', 'pantalla led').",
                 },
                 "tipo": {
                     "type": "string",
                     "enum": ["componente", "caso"],
-                    "description": "Opcional: filtra por tipo de recurso.",
+                    "description": "Opcional: filtra por tipo de recurso (sólo aplica al catálogo de respaldo).",
                 },
             },
             "required": ["consulta"],
+        },
+    }
+
+
+def _tool_leer_documento_drive() -> dict:
+    return {
+        "name": "leer_documento_drive",
+        "description": (
+            "Abre un documento del Drive (uno que devolvió `buscar_en_drive`) y devuelve "
+            "su CONTENIDO como texto, para que leas el valor REAL y lo cites. Pásale el "
+            "`file_id` y el `tipo_mime` del documento."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_id": {
+                    "type": "string",
+                    "description": "El id del documento (tal como lo devolvió buscar_en_drive).",
+                },
+                "tipo_mime": {
+                    "type": "string",
+                    "description": "El tipo MIME del documento (tal como lo devolvió buscar_en_drive).",
+                },
+            },
+            "required": ["file_id", "tipo_mime"],
         },
     }
 
@@ -234,7 +267,7 @@ def _tool_proponer_tareas() -> dict:
 
 
 def _herramientas(permitir_internet: bool) -> list[dict]:
-    tools = [_tool_buscar_en_drive()]
+    tools = [_tool_buscar_en_drive(), _tool_leer_documento_drive()]
     if permitir_internet:
         tools.append(_tool_buscar_en_internet())
     tools.append(_tool_proponer_componentes())
@@ -273,6 +306,66 @@ def _contenido_assistant(respuesta) -> list[dict]:
     return bloques
 
 
+async def _buscar_en_drive_real(consulta: str, cliente_drive, fuentes: list[Fuente]) -> str:
+    """Busca EN VIVO en TODO el Drive del usuario (vía `ClienteDriveReal`) y arma el
+    `tool_result`: los documentos encontrados (nombre + id + tipo MIME) para que Javo
+    elija cuál abrir con `leer_documento_drive`. Cada doc encontrado queda como Fuente
+    citable. Si el Drive falla (token revocado, red), degrada sin romper el loop."""
+    try:
+        archivos = await cliente_drive.buscar_archivos(consulta)
+    except Exception:
+        return (
+            f"No pude buscar en el Drive ahora mismo («{consulta}»). "
+            "No inventes un precio: pide el dato o márcalo como estimación."
+        )
+    if not archivos:
+        return (
+            f"Sin resultados en el Drive para «{consulta}». "
+            "No inventes un precio: pide el dato o márcalo como estimación."
+        )
+    lineas = []
+    for a in archivos:
+        fuentes.append(Fuente(titulo=a.nombre, referencia=f"Drive: {a.nombre}"))
+        lineas.append(f"- nombre={a.nombre} | file_id={a.id} | tipo_mime={a.tipo_mime}")
+    return (
+        "Documentos del Drive (ábrelos con leer_documento_drive para ver el valor "
+        "real y cítalos):\n" + "\n".join(lineas)
+    )
+
+
+async def _buscar_en_catalogo(
+    entrada: dict, repo_catalogo, empresa_id, fuentes: list[Fuente]
+) -> str:
+    """Respaldo: si no hay Drive real cableado, busca en la tabla `catalogo` (RLS)."""
+    if repo_catalogo is None or empresa_id is None:
+        return (
+            "Sin acceso a Drive configurado para esta empresa. "
+            "No inventes un precio: pide el dato o márcalo como estimación."
+        )
+    items = await repo_catalogo.buscar(
+        entrada.get("consulta", ""), empresa_id, tipo=entrada.get("tipo")
+    )
+    if not items:
+        return (
+            f"Sin resultados en el catálogo para «{entrada.get('consulta', '')}». "
+            "No inventes un precio: pide el dato o márcalo como estimación."
+        )
+    lineas = []
+    for it in items:
+        fuentes.append(
+            Fuente(
+                titulo=it.nombre,
+                referencia=f"Drive: {it.origen}" if it.origen else "Drive (catálogo)",
+            )
+        )
+        lineas.append(
+            f"- {it.nombre} | detalle={it.detalle or ''} | "
+            f"valor_unitario={it.valor_unitario} | unidad={it.unidad or ''} | "
+            f"proveedor={it.proveedor or ''} | origen={it.origen or ''}"
+        )
+    return "Catálogo (usa estos valores, no inventes):\n" + "\n".join(lineas)
+
+
 async def _ejecutar_herramienta(
     bloque,
     repo_catalogo,
@@ -282,6 +375,7 @@ async def _ejecutar_herramienta(
     tareas: list[TareaPropuesta],
     fuentes: list[Fuente],
     usos_internet: int,
+    cliente_drive=None,
 ) -> tuple[str, int]:
     """Ejecuta UNA herramienta (la corre el backend, no el LLM) y devuelve el texto del
     `tool_result` + el contador de búsquedas en internet actualizado. Acumula los
@@ -290,29 +384,40 @@ async def _ejecutar_herramienta(
     entrada = getattr(bloque, "input", None) or {}
 
     if nombre == "buscar_en_drive":
-        items = await repo_catalogo.buscar(
-            entrada.get("consulta", ""), empresa_id, tipo=entrada.get("tipo")
-        )
-        if not items:
+        # Prioriza el DRIVE REAL en vivo (todas las carpetas). Si no hay Drive cableado,
+        # cae al catálogo de respaldo (tabla `catalogo`).
+        if cliente_drive is not None:
             return (
-                f"Sin resultados en el catálogo para «{entrada.get('consulta', '')}». "
-                "No inventes un precio: pide el dato o márcalo como estimación.",
+                await _buscar_en_drive_real(
+                    entrada.get("consulta", ""), cliente_drive, fuentes
+                ),
                 usos_internet,
             )
-        lineas = []
-        for it in items:
-            fuentes.append(
-                Fuente(
-                    titulo=it.nombre,
-                    referencia=f"Drive: {it.origen}" if it.origen else "Drive (catálogo)",
-                )
+        return (
+            await _buscar_en_catalogo(entrada, repo_catalogo, empresa_id, fuentes),
+            usos_internet,
+        )
+
+    if nombre == "leer_documento_drive":
+        if cliente_drive is None:
+            return (
+                "Sin acceso a Drive configurado: no puedo abrir el documento. "
+                "Pide el dato o márcalo como estimación; no inventes.",
+                usos_internet,
             )
-            lineas.append(
-                f"- {it.nombre} | detalle={it.detalle or ''} | "
-                f"valor_unitario={it.valor_unitario} | unidad={it.unidad or ''} | "
-                f"proveedor={it.proveedor or ''} | origen={it.origen or ''}"
+        try:
+            contenido = await cliente_drive.leer_documento(
+                entrada.get("file_id", ""), entrada.get("tipo_mime", "")
             )
-        return ("Catálogo (usa estos valores, no inventes):\n" + "\n".join(lineas), usos_internet)
+        except Exception:
+            return (
+                "No pude abrir ese documento del Drive ahora mismo. "
+                "Pide el dato o márcalo como estimación; no inventes.",
+                usos_internet,
+            )
+        if not contenido:
+            return ("El documento vino vacío o no se pudo leer su texto.", usos_internet)
+        return ("Contenido del documento (usa el valor real y cítalo):\n" + contenido, usos_internet)
 
     if nombre == "buscar_en_internet":
         if proveedor_busqueda is None or usos_internet >= TOPE_INTERNET:
@@ -363,16 +468,24 @@ async def responder_javo(
     repo_catalogo=None,
     proveedor_busqueda=None,
     empresa_id=None,
+    cliente_drive=None,
 ) -> RespuestaConversacion:
     """Genera la respuesta de Javo para el historial dado, usando Sonnet con tool-use.
 
-    Si `repo_catalogo` y `empresa_id` están presentes, Javo es agente (puede consultar
-    el Drive, internet y proponer componentes). Sin ellos, responde en modo simple (una
-    sola llamada). El cliente puede lanzar (LLM caído) → se propaga (el endpoint lo
-    convierte en 502).
+    Si hay `cliente_drive` (Drive real de la empresa) o `repo_catalogo`+`empresa_id`,
+    Javo es agente: busca EN VIVO en TODO el Drive del usuario (todas las carpetas) con
+    `buscar_en_drive`, abre los documentos con `leer_documento_drive` y usa la tarifa
+    REAL citándola; además puede buscar en internet (Tipo 2) y proponer componentes /
+    tareas. El Drive real tiene prioridad sobre la tabla `catalogo` (respaldo). Si no hay
+    Drive cableado (`cliente_drive=None`) las tools de Drive degradan limpio (avisan "sin
+    acceso a Drive", no revientan). Sin ninguna fuente, responde en modo simple (una sola
+    llamada). El cliente puede lanzar (LLM caído) → se propaga (el endpoint lo convierte
+    en 502).
     """
     permitir_internet = _quiere_internet(tipo, mensajes)
-    tiene_tools = repo_catalogo is not None and empresa_id is not None
+    tiene_tools = cliente_drive is not None or (
+        repo_catalogo is not None and empresa_id is not None
+    )
     tools = _herramientas(permitir_internet) if tiene_tools else None
 
     conversacion = _normalizar(mensajes)
@@ -427,6 +540,7 @@ async def responder_javo(
                 tareas,
                 fuentes,
                 usos_internet,
+                cliente_drive=cliente_drive,
             )
             resultados.append(
                 {"type": "tool_result", "tool_use_id": bloque.id, "content": salida}

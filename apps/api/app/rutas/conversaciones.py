@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.dependencias import (
     obtener_cliente_anthropic,
+    obtener_cliente_drive_conversacion,
     obtener_empresa_actual,
     obtener_proveedor_busqueda,
     obtener_repositorio_catalogo,
@@ -56,6 +57,7 @@ async def responder(
     repo_catalogo=Depends(obtener_repositorio_catalogo),
     repo_conversaciones=Depends(obtener_repositorio_conversaciones),
     proveedor=Depends(obtener_proveedor_busqueda),
+    cliente_drive=Depends(obtener_cliente_drive_conversacion),
     empresa_id: UUID = Depends(obtener_empresa_actual),
 ) -> RespuestaConversacion:
     try:
@@ -66,6 +68,7 @@ async def responder(
             repo_catalogo=repo_catalogo,
             proveedor_busqueda=proveedor,
             empresa_id=empresa_id,
+            cliente_drive=cliente_drive,
         )
     except Exception as exc:
         # El LLM/herramientas son servicios externos: si caen, es un 502 (no un 500
