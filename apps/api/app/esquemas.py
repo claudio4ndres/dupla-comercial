@@ -90,6 +90,26 @@ class ResumenReproceso(BaseModel):
     reclasificadas: int
 
 
+class CarpetaDrive(BaseModel):
+    """Una carpeta del Drive en el diagnóstico: sólo id + nombre (lo justo para que el
+    operador identifique cuál configurar como carpeta de la empresa)."""
+
+    id: str
+    nombre: str
+
+
+class DiagnosticoDrive(BaseModel):
+    """Resultado del diagnóstico READ-ONLY de Drive (POST /interno/drive/diagnostico).
+
+    `acceso` dice si el token de la empresa pudo listar Drive; `motivo` explica el
+    fallo cuando `acceso=False` (sin integración, o el tipo de error que reventó, p.ej.
+    un 403 de scope); `carpetas` trae las carpetas accesibles cuando hubo acceso."""
+
+    acceso: bool
+    motivo: str | None = None
+    carpetas: list[CarpetaDrive] = []
+
+
 # Conversación con Javo (003) ------------------------------------------------
 # El front usa `t1`/`t2` (tipo confirmado en pantalla), distinto del `tipo_1`/
 # `tipo_2` que persiste el clasificador. Se mantienen separados a propósito.

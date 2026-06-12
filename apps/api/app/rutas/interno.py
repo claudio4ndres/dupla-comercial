@@ -7,17 +7,24 @@ infiere del ambiente y jamás se cruzan tenants (T11).
 """
 import logging
 import secrets as _secrets
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.dependencias import (
     obtener_cliente_anthropic,
+    obtener_fabrica_cliente_drive,
     obtener_fabrica_cliente_gmail,
     obtener_repositorio_integraciones_servicio,
     obtener_repositorio_solicitudes_servicio,
     obtener_secreto_poller,
 )
-from app.esquemas import ResumenPoller, ResumenReproceso
+from app.esquemas import (
+    CarpetaDrive,
+    DiagnosticoDrive,
+    ResumenPoller,
+    ResumenReproceso,
+)
 from app.servicios.clasificador import clasificar_solicitud
 from app.servicios.gmail import ErrorAutenticacionGmail
 from app.servicios.ingesta_correo import ingerir_correos_nuevos
@@ -140,3 +147,47 @@ async def reprocesar_correo(
                 integracion.empresa_id, "reconectar"
             )
     return ResumenReproceso(revisadas=revisadas, reclasificadas=reclasificadas)
+
+
+@router.post("/drive/diagnostico", response_model=DiagnosticoDrive)
+async def diagnostico_drive(
+    empresa_id: UUID,
+    repo_integraciones=Depends(obtener_repositorio_integraciones_servicio),
+    fabrica_drive=Depends(obtener_fabrica_cliente_drive),
+    _=Depends(verificar_credencial_servicio),
+) -> DiagnosticoDrive:
+    """Diagnóstico READ-ONLY: ¿el token de Google de `empresa_id` tiene acceso a Drive?
+
+    No escribe nada: sólo lista las CARPETAS del Drive de la empresa (el scope/refresh
+    cuelgan del OAuth de gmail). Sirve para depurar la conexión Drive por empresa antes
+    de configurar su carpeta:
+
+    * sin integración gmail conectada (o sin `token_ref`) → `acceso=False` con motivo;
+    * si lista bien → `acceso=True` + las carpetas (id/nombre) para configurar la de la
+      empresa;
+    * si el cliente revienta (p.ej. un 403 de scope, refresh revocado, red caída) → se
+      atrapa y se reporta el TIPO de error en `motivo`, para distinguir un problema de
+      permisos de otros fallos. Nunca tumba al llamador (no propaga 500)."""
+    integracion = await repo_integraciones.obtener_por_empresa_y_proveedor(
+        empresa_id, "gmail"
+    )
+    if integracion is None or not integracion.token_ref:
+        return DiagnosticoDrive(
+            acceso=False,
+            motivo="sin integración gmail conectada",
+            carpetas=[],
+        )
+    try:
+        cliente = fabrica_drive.crear(integracion)
+        carpetas = await cliente.listar_carpetas()
+        return DiagnosticoDrive(
+            acceso=True,
+            motivo=None,
+            carpetas=[CarpetaDrive(id=c.id, nombre=c.nombre) for c in carpetas],
+        )
+    except Exception as exc:  # noqa: BLE001 — diagnóstico: reporta el fallo, no lo propaga
+        return DiagnosticoDrive(
+            acceso=False,
+            motivo=f"{type(exc).__name__}: {str(exc)[:200]}",
+            carpetas=[],
+        )

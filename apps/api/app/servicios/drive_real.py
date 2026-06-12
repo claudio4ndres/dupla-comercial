@@ -111,6 +111,40 @@ class ClienteDriveReal:
             if self._cliente is None:
                 await http.aclose()
 
+    async def listar_carpetas(self) -> list[ArchivoDrive]:
+        """Lista las CARPETAS (no archivos) del Drive del usuario. Es un DIAGNÓSTICO:
+
+        * si responde, el token de la empresa TIENE acceso a Drive (el scope
+          `drive.readonly` está concedido y el refresh es válido);
+        * los IDs devueltos sirven para configurar la carpeta por empresa
+          (`drive_folder_id`), sin tener que adivinarlos a mano.
+
+        Filtra por `mimeType='application/vnd.google-apps.folder'` (sólo carpetas) y
+        excluye la papelera. Mismo refresh OAuth y manejo de `http`/`finally` que
+        `listar_archivos` (el access token efímero sale del refresh de la empresa,
+        regla de oro #3).
+        """
+        http = self._http()
+        try:
+            token = await self._access_token(http)
+            resp = await http.get(
+                f"{BASE_DRIVE}/files",
+                params={
+                    "q": (
+                        "mimeType='application/vnd.google-apps.folder' "
+                        "and trashed=false"
+                    ),
+                    "fields": "files(id,name,mimeType)",
+                    "pageSize": 100,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            resp.raise_for_status()
+            return [_a_archivo(f) for f in resp.json().get("files", []) or []]
+        finally:
+            if self._cliente is None:
+                await http.aclose()
+
 
 class FabricaClienteDriveReal:
     """Construye el `ClienteDriveReal` de UNA integración. Le pasa el `token_ref`

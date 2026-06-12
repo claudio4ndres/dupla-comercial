@@ -145,6 +145,45 @@ async def test_listar_archivos_carpeta_vacia_devuelve_lista_vacia():
     assert archivos == []
 
 
+# --- listar_carpetas: diagnóstico de acceso al Drive (sólo carpetas) ----------
+
+async def test_listar_carpetas_pide_solo_carpetas_y_parsea_la_respuesta():
+    # Diagnóstico: si el token responde a este listado, TIENE acceso a Drive; los IDs
+    # devueltos sirven para configurar la carpeta por empresa.
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    files = [
+        {"id": "carpeta-1", "name": "Capsulab · Operaciones",
+         "mimeType": "application/vnd.google-apps.folder"},
+        {"id": "carpeta-2", "name": "Tarifarios",
+         "mimeType": "application/vnd.google-apps.folder"},
+    ]
+    handler = _ruteador(registro, files=files)
+    cliente = ClienteDriveReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(handler),
+    )
+
+    carpetas = await cliente.listar_carpetas()
+
+    assert [c.nombre for c in carpetas] == ["Capsulab · Operaciones", "Tarifarios"]
+    c = carpetas[0]
+    assert isinstance(c, ArchivoDrive)
+    assert c.id == "carpeta-1"
+    assert c.tipo_mime == "application/vnd.google-apps.folder"
+
+    # El refresh OAuth ocurrió y el listado usó el access token fresco.
+    token_req = next(r for r in registro if r.url.path.endswith("/token"))
+    assert REFRESH in token_req.content.decode()
+    files_req = next(r for r in registro if r.url.path.endswith("/files"))
+    assert files_req.headers["authorization"] == "Bearer ya29.token-fresco"
+    # El `q` filtra SÓLO carpetas (no archivos) y excluye papelera.
+    q = files_req.url.params["q"]
+    assert "mimeType='application/vnd.google-apps.folder'" in q
+    assert "trashed=false" in q
+
+
 # --- Resiliencia del token: refresh inválido → ErrorAutenticacionGmail --------
 
 async def test_refresh_invalido_lanza_error_de_autenticacion():
