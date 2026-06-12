@@ -16,6 +16,7 @@ from app.dependencias import (
     obtener_empresa_actual,
     obtener_repositorio_conversaciones,
     obtener_repositorio_propuestas,
+    obtener_repositorio_solicitudes,
 )
 from app.main import app
 from app.repositorios.conversaciones import RepositorioConversacionesEnMemoria
@@ -25,15 +26,20 @@ from app.repositorios.propuestas import (
     RepositorioPropuestasEnMemoria,
     TareaPropuesta,
 )
+from app.repositorios.solicitudes import RepositorioSolicitudesEnMemoria, Solicitud
 
 EMPRESA_A = uuid4()
 EMPRESA_B = uuid4()
 
 
-def _cliente_http(repo, empresa_id=EMPRESA_A):
+def _cliente_http(repo, empresa_id=EMPRESA_A, repo_sol=None):
     app.dependency_overrides[obtener_repositorio_propuestas] = lambda: repo
-    app.dependency_overrides[obtener_repositorio_conversaciones] = (
-        lambda: RepositorioConversacionesEnMemoria()
+    # Una ÚNICA conversación en memoria reutilizada entre requests: así dos POST a la
+    # misma solicitud caen sobre la MISMA conversación (clave de la idempotencia de #4).
+    conversaciones = RepositorioConversacionesEnMemoria()
+    app.dependency_overrides[obtener_repositorio_conversaciones] = lambda: conversaciones
+    app.dependency_overrides[obtener_repositorio_solicitudes] = (
+        lambda: repo_sol if repo_sol is not None else RepositorioSolicitudesEnMemoria()
     )
     app.dependency_overrides[obtener_empresa_actual] = lambda: empresa_id
     return TestClient(app)
@@ -165,3 +171,106 @@ def test_respuesta_nunca_expone_empresa_id():
 
     assert "empresa_id" not in cuerpo
     assert "solicitud_id" not in cuerpo
+
+
+# ── #4 · idempotencia (clic doble en "Generar propuesta") ────────────────────
+def _cuerpo_crear():
+    return {
+        "tipo": "t1",
+        "componentes": [
+            {"nombre": "Promotoras", "cantidad": 6, "dias": 3, "valor_unitario": 240000}
+        ],
+        "tareas": [{"nombre": "Reclutar promotoras", "area": "RRHH"}],
+    }
+
+
+def test_post_dos_veces_no_duplica_la_propuesta():
+    # #4 (Sev ALTA) · dos clics seguidos en "Generar propuesta" sobre la MISMA solicitud
+    # NO deben crear 2 propuestas: la segunda reemplaza a la primera (misma conversación).
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([])
+    http = _cliente_http(repo)
+
+    r1 = http.post(f"/solicitudes/{sol}/propuesta", json=_cuerpo_crear())
+    r2 = http.post(f"/solicitudes/{sol}/propuesta", json=_cuerpo_crear())
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    # La lista de la empresa tiene UNA sola propuesta para esa solicitud (no dos).
+    propuestas = http.get("/propuestas").json()
+    de_la_sol = [p for p in propuestas if p["solicitud_id"] == str(sol)]
+    assert len(de_la_sol) == 1
+
+
+# ── #7 · ciclo de vida ───────────────────────────────────────────────────────
+def test_crear_propuesta_avanza_estado_de_la_solicitud_a_propuesta():
+    # #7 · al generar la propuesta, la solicitud avanza de 'nueva' a 'propuesta'.
+    sol_id = uuid4()
+    repo = RepositorioPropuestasEnMemoria([])
+    repo_sol = RepositorioSolicitudesEnMemoria(
+        [Solicitud(id=sol_id, empresa_id=EMPRESA_A, cuerpo="x", estado="nueva")]
+    )
+    http = _cliente_http(repo, repo_sol=repo_sol)
+
+    r = http.post(f"/solicitudes/{sol_id}/propuesta", json=_cuerpo_crear())
+
+    assert r.status_code == 200
+    actualizada = repo_sol.por_id(sol_id)
+    assert actualizada.estado == "propuesta"
+
+
+def test_patch_estado_aprueba_la_propuesta():
+    # #7 · transición válida borrador→aprobada vía PATCH /solicitudes/{id}/propuesta/estado.
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    http = _cliente_http(repo)
+
+    r = http.patch(f"/solicitudes/{sol}/propuesta/estado", json={"estado": "aprobada"})
+
+    assert r.status_code == 200
+    assert r.json()["estado"] == "aprobada"
+    # Y queda persistida: el GET la devuelve ya aprobada.
+    assert http.get(f"/solicitudes/{sol}/propuesta").json()["estado"] == "aprobada"
+
+
+def test_patch_estado_transicion_invalida_es_409():
+    # #7 · no se puede saltar de borrador directo a enviada (hay que aprobar primero).
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    http = _cliente_http(repo)
+
+    r = http.patch(f"/solicitudes/{sol}/propuesta/estado", json={"estado": "enviada"})
+
+    assert r.status_code == 409
+
+
+def test_patch_estado_valor_no_valido_es_422():
+    # #7 · un estado fuera del enum (borrador|aprobada|enviada) lo rechaza Pydantic.
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    http = _cliente_http(repo)
+
+    r = http.patch(f"/solicitudes/{sol}/propuesta/estado", json={"estado": "cancelada"})
+
+    assert r.status_code == 422
+
+
+def test_patch_estado_sin_propuesta_es_404():
+    # #7 · transicionar una solicitud sin propuesta → 404.
+    repo = RepositorioPropuestasEnMemoria([])
+    http = _cliente_http(repo)
+
+    r = http.patch(f"/solicitudes/{uuid4()}/propuesta/estado", json={"estado": "aprobada"})
+
+    assert r.status_code == 404
+
+
+def test_patch_estado_aislamiento_no_toca_propuesta_de_otra_empresa():
+    # La propuesta es de la empresa B; el usuario es de la A → 404 (no la ve ni la mueve).
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol, empresa_id=EMPRESA_B)])
+    http = _cliente_http(repo, empresa_id=EMPRESA_A)
+
+    r = http.patch(f"/solicitudes/{sol}/propuesta/estado", json={"estado": "aprobada"})
+
+    assert r.status_code == 404

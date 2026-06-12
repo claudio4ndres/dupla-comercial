@@ -50,6 +50,10 @@ class RepositorioSolicitudes(Protocol):
         tipo: str = "sin_clasificar",
     ) -> bool: ...
 
+    async def actualizar_estado(
+        self, solicitud_id: UUID, empresa_id: UUID, nuevo_estado: str
+    ) -> Solicitud: ...
+
     async def listar(self, empresa_id: UUID) -> list[Solicitud]: ...
 
     async def listar_sin_clasificar(self, empresa_id: UUID) -> list[Solicitud]: ...
@@ -96,6 +100,19 @@ class RepositorioSolicitudesEnMemoria:
         if solicitud is None:
             raise KeyError(solicitud_id)
         actualizada = solicitud.model_copy(update={"resumen": resumen, "tipo": tipo})
+        self._por_id[solicitud_id] = actualizada
+        return actualizada
+
+    async def actualizar_estado(
+        self, solicitud_id: UUID, empresa_id: UUID, nuevo_estado: str
+    ) -> Solicitud:
+        """#7 · Avanza el estado del ciclo de vida de la solicitud (p.ej. a 'propuesta'
+        al generar la cotización, o 'enviada' al mandar las tareas a ClickUp). Sólo toca
+        solicitudes de la empresa consultada (emula la RLS)."""
+        solicitud = await self.obtener(solicitud_id, empresa_id)
+        if solicitud is None:
+            raise KeyError(solicitud_id)
+        actualizada = solicitud.model_copy(update={"estado": nuevo_estado})
         self._por_id[solicitud_id] = actualizada
         return actualizada
 

@@ -81,7 +81,11 @@ class RepositorioPropuestasSupabase:
         resp = await self._peticion(
             "GET",
             f"/propuestas?select={_SELECT}"
-            f"&conversaciones.solicitud_id=eq.{solicitud_id}&limit=1",
+            f"&conversaciones.solicitud_id=eq.{solicitud_id}"
+            # #4 · ordenar por `creado_en.desc` para servir SIEMPRE la última versión:
+            # sin `order`, PostgREST puede devolver una propuesta vieja/arbitraria (la
+            # descarga Excel/PPT/ClickUp leía una stale).
+            "&order=creado_en.desc&limit=1",
             headers=self._headers(),
         )
         resp.raise_for_status()
@@ -101,6 +105,21 @@ class RepositorioPropuestasSupabase:
             tareas=[TareaPropuesta(**t) for t in (fila.get("tareas") or [])],
         )
 
+    async def _id_propuesta_existente(self, conversacion_id: UUID) -> str | None:
+        """#4 · ¿ya hay una propuesta para esta conversación? Devuelve su id o None.
+
+        La unicidad real la garantiza el índice UNIQUE `propuestas.conversacion_id`
+        (migración 0007); este GET resuelve la idempotencia ANTES de insertar para no
+        chocar contra ese UNIQUE y poder REEMPLAZAR los hijos sobre la misma fila."""
+        resp = await self._peticion(
+            "GET",
+            f"/propuestas?select=id&conversacion_id=eq.{conversacion_id}&limit=1",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        filas = resp.json()
+        return filas[0]["id"] if filas else None
+
     async def crear(
         self,
         empresa_id: UUID,
@@ -111,22 +130,53 @@ class RepositorioPropuestasSupabase:
     ) -> Propuesta:
         """Persiste la propuesta que armó Javo: cabecera + componentes + tareas, todo
         ligado a la conversación de la solicitud (propuesta→conversacion→solicitud).
-        La RLS exige `empresa_id` = empresa del JWT (regla #2)."""
+        La RLS exige `empresa_id` = empresa del JWT (regla #2).
+
+        IDEMPOTENTE (#4, Sev ALTA): la conversación se reutiliza por (solicitud, tipo),
+        así que un clic doble en "Generar propuesta" caería sobre la MISMA conversación.
+        Antes esto INSERTABA una segunda propuesta con componentes/tareas duplicados; ahora,
+        si ya existe propuesta para esa conversación, se REEMPLAZA: se borran sus hijos
+        (`componentes_propuesta` + `tareas`) y se re-insertan los nuevos sobre la misma fila.
+        """
         total = _total_de(componentes)
-        # 1. Cabecera de la propuesta.
-        resp = await self._peticion(
-            "POST",
-            "/propuestas",
-            headers={**self._headers(), "Prefer": "return=representation"},
-            json={
-                "empresa_id": str(empresa_id),
-                "conversacion_id": str(conversacion_id),
-                "total": total,
-                "estado": "borrador",
-            },
-        )
-        resp.raise_for_status()
-        propuesta_id = resp.json()[0]["id"]
+        # 1. Cabecera: ¿ya existe propuesta para esta conversación? → REEMPLAZAR; si no → INSERT.
+        propuesta_id = await self._id_propuesta_existente(conversacion_id)
+        if propuesta_id is not None:
+            # REEMPLAZAR: actualiza el total/estado y borra los hijos viejos antes de re-insertar.
+            patch = await self._peticion(
+                "PATCH",
+                f"/propuestas?id=eq.{propuesta_id}",
+                headers={**self._headers(), "Prefer": "return=representation"},
+                json={"total": total, "estado": "borrador"},
+            )
+            patch.raise_for_status()
+            # Borra los hijos de la versión anterior (reemplazo limpio, sin duplicados).
+            d1 = await self._peticion(
+                "DELETE",
+                f"/componentes_propuesta?propuesta_id=eq.{propuesta_id}",
+                headers=self._headers(),
+            )
+            d1.raise_for_status()
+            d2 = await self._peticion(
+                "DELETE",
+                f"/tareas?propuesta_id=eq.{propuesta_id}",
+                headers=self._headers(),
+            )
+            d2.raise_for_status()
+        else:
+            resp = await self._peticion(
+                "POST",
+                "/propuestas",
+                headers={**self._headers(), "Prefer": "return=representation"},
+                json={
+                    "empresa_id": str(empresa_id),
+                    "conversacion_id": str(conversacion_id),
+                    "total": total,
+                    "estado": "borrador",
+                },
+            )
+            resp.raise_for_status()
+            propuesta_id = resp.json()[0]["id"]
         # 2. Componentes valorizados (un POST con el array).
         if componentes:
             r2 = await self._peticion(
@@ -174,6 +224,33 @@ class RepositorioPropuestasSupabase:
             estado="borrador",
             componentes=componentes,
             tareas=tareas,
+        )
+
+    async def actualizar_estado(
+        self, propuesta_id: UUID, empresa_id: UUID, nuevo_estado: str
+    ) -> Propuesta:
+        """#7 · Transiciona el estado de la propuesta (borrador→aprobada→enviada).
+
+        La validación de la transición la hace el endpoint; aquí sólo se persiste el
+        nuevo estado. La RLS filtra por la empresa del JWT (regla #2): un usuario sólo
+        puede mover propuestas de su empresa. Devuelve la fila actualizada."""
+        resp = await self._peticion(
+            "PATCH",
+            f"/propuestas?id=eq.{propuesta_id}",
+            headers={**self._headers(), "Prefer": "return=representation"},
+            json={"estado": nuevo_estado},
+        )
+        resp.raise_for_status()
+        filas = resp.json()
+        if not filas:
+            raise KeyError(propuesta_id)
+        fila = filas[0]
+        return Propuesta(
+            id=fila["id"],
+            empresa_id=empresa_id,
+            solicitud_id=fila.get("solicitud_id") or UUID(int=0),
+            total=fila.get("total", 0) or 0,
+            estado=fila.get("estado", nuevo_estado),
         )
 
     async def listar(self, empresa_id: UUID) -> list[PropuestaResumen]:

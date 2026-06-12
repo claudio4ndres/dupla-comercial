@@ -88,6 +88,10 @@ class RepositorioPropuestas(Protocol):
         tareas: list[TareaPropuesta],
     ) -> Propuesta: ...
 
+    async def actualizar_estado(
+        self, propuesta_id: UUID, empresa_id: UUID, nuevo_estado: str
+    ) -> Propuesta: ...
+
     async def listar(self, empresa_id: UUID) -> list[PropuestaResumen]: ...
 
 
@@ -132,8 +136,14 @@ class RepositorioPropuestasEnMemoria:
         componentes: list[ComponentePropuesta],
         tareas: list[TareaPropuesta],
     ) -> Propuesta:
+        # #4 · IDEMPOTENTE: la conversación se reutiliza por (solicitud, tipo), así que
+        # re-generar la propuesta NO debe duplicarla. Si ya hay una para esta (empresa,
+        # solicitud), se REEMPLAZA en sitio (misma fila lógica + su resumen) en vez de
+        # apilar otra. Emula el UNIQUE(conversacion_id) + el reemplazo del repo real.
+        clave = (empresa_id, solicitud_id)
+        existente = self._por_clave.get(clave)
         propuesta = Propuesta(
-            id=uuid4(),
+            id=existente.id if existente else uuid4(),
             empresa_id=empresa_id,
             solicitud_id=solicitud_id,
             total=_total_de(componentes),
@@ -141,17 +151,36 @@ class RepositorioPropuestasEnMemoria:
             componentes=componentes,
             tareas=tareas,
         )
-        self._por_clave[(empresa_id, solicitud_id)] = propuesta
-        self._resumenes.append(
-            PropuestaResumen(
-                id=propuesta.id,
-                empresa_id=empresa_id,
-                solicitud_id=solicitud_id,
-                total=propuesta.total,
-                estado=propuesta.estado,
-            )
+        self._por_clave[clave] = propuesta
+        resumen = PropuestaResumen(
+            id=propuesta.id,
+            empresa_id=empresa_id,
+            solicitud_id=solicitud_id,
+            total=propuesta.total,
+            estado=propuesta.estado,
         )
+        # Reemplaza el resumen de la misma propuesta si existía; si no, lo agrega.
+        self._resumenes = [r for r in self._resumenes if r.id != propuesta.id]
+        self._resumenes.append(resumen)
         return propuesta
+
+    async def actualizar_estado(
+        self, propuesta_id: UUID, empresa_id: UUID, nuevo_estado: str
+    ) -> Propuesta:
+        # Sólo mueve propuestas de la empresa consultada (emula la RLS). Actualiza tanto
+        # la `Propuesta` completa como su `PropuestaResumen` para que `listar` quede al día.
+        for clave, propuesta in self._por_clave.items():
+            if propuesta.id == propuesta_id and clave[0] == empresa_id:
+                actualizada = propuesta.model_copy(update={"estado": nuevo_estado})
+                self._por_clave[clave] = actualizada
+                self._resumenes = [
+                    r.model_copy(update={"estado": nuevo_estado})
+                    if r.id == propuesta_id
+                    else r
+                    for r in self._resumenes
+                ]
+                return actualizada
+        raise KeyError(propuesta_id)
 
     async def listar(self, empresa_id: UUID) -> list[PropuestaResumen]:
         # Sólo las de la empresa consultada (emula la RLS).

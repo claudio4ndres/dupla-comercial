@@ -21,6 +21,7 @@ from app.esquemas import (
     ResultadoEnvioClickUp,
     SolicitudListada,
     TareaPropuestaSalida,
+    TransicionEstadoEntrada,
 )
 from app.repositorios.propuestas import ComponentePropuesta, TareaPropuesta
 from app.servicios.clasificador import clasificar_solicitud
@@ -42,6 +43,14 @@ _MEDIA_PPTX = (
 router = APIRouter(prefix="/solicitudes", tags=["solicitudes"])
 
 _TIPOS_VALIDOS = ("tipo_1", "tipo_2")
+
+# #7 · Ciclo de vida de la propuesta: desde cada estado, a cuáles se puede pasar.
+# borrador → aprobada → enviada (no se salta pasos; quedarse en el mismo es no-op).
+_TRANSICIONES_PROPUESTA: dict[str, set[str]] = {
+    "borrador": {"borrador", "aprobada"},
+    "aprobada": {"aprobada", "enviada"},
+    "enviada": {"enviada"},
+}
 
 
 @router.get("", response_model=list[SolicitudListada])
@@ -134,6 +143,7 @@ async def crear_propuesta(
     cuerpo: CrearPropuestaEntrada,
     repo=Depends(obtener_repositorio_propuestas),
     repo_conv=Depends(obtener_repositorio_conversaciones),
+    repo_sol=Depends(obtener_repositorio_solicitudes),
     empresa_id: UUID = Depends(obtener_empresa_actual),
 ) -> PropuestaDetalle:
     """Persiste la propuesta que Javo armó en el chat (componentes valorizados +
@@ -141,7 +151,11 @@ async def crear_propuesta(
     que las pantallas Propuesta/Tareas y los exports (Excel/PPT/ClickUp) la usen.
 
     Antes esto NO existía: 'Generar propuesta' sólo hacía GET → 404 con datos reales
-    (sólo funcionaba la demo sembrada). Ahora la conversación SÍ baja a propuesta."""
+    (sólo funcionaba la demo sembrada). Ahora la conversación SÍ baja a propuesta.
+
+    IDEMPOTENTE (#4): re-generar la propuesta sobre la misma solicitud NO duplica (la
+    conversación se reutiliza por (solicitud, tipo) y el repo reemplaza en sitio). Al
+    crearla, la solicitud avanza su `estado` a 'propuesta' (#7, ciclo de vida)."""
     conversacion_id = await repo_conv.obtener_o_crear_conversacion(
         solicitud_id, empresa_id, cuerpo.tipo
     )
@@ -168,6 +182,12 @@ async def crear_propuesta(
     propuesta = await repo.crear(
         empresa_id, solicitud_id, conversacion_id, componentes, tareas
     )
+    # #7 · La solicitud avanza a 'propuesta' (CHECK de la tabla). Best-effort: si la
+    # solicitud no existe en el store (p.ej. una demo sin fila), no rompe la creación.
+    try:
+        await repo_sol.actualizar_estado(solicitud_id, empresa_id, "propuesta")
+    except KeyError:
+        pass
     return PropuestaDetalle(
         id=str(propuesta.id),
         total=propuesta.total,
@@ -176,6 +196,51 @@ async def crear_propuesta(
             ComponentePropuestaSalida(**c.model_dump()) for c in propuesta.componentes
         ],
         tareas=[TareaPropuestaSalida(**t.model_dump()) for t in propuesta.tareas],
+    )
+
+
+@router.patch("/{solicitud_id}/propuesta/estado", response_model=PropuestaDetalle)
+async def transicionar_estado_propuesta(
+    solicitud_id: UUID,
+    cuerpo: TransicionEstadoEntrada,
+    repo=Depends(obtener_repositorio_propuestas),
+    repo_sol=Depends(obtener_repositorio_solicitudes),
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+) -> PropuestaDetalle:
+    """#7 · Transiciona el estado de la propuesta: borrador → aprobada → enviada.
+
+    Sólo de la empresa del usuario (RLS por su JWT). Sin propuesta para la solicitud →
+    404. Transición inválida (saltarse pasos, p.ej. borrador→enviada, o retroceder) →
+    409. El valor fuera del enum lo rechaza Pydantic (422) antes de llegar aquí.
+
+    Si la propuesta pasa a 'enviada', la solicitud también avanza a 'enviada' (mantiene
+    en sincronía el ciclo de vida de ambas)."""
+    propuesta = await repo.obtener_por_solicitud(solicitud_id, empresa_id)
+    if propuesta is None:
+        raise HTTPException(status_code=404, detail="La solicitud no tiene propuesta")
+
+    permitidos = _TRANSICIONES_PROPUESTA.get(propuesta.estado, set())
+    if cuerpo.estado not in permitidos:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede pasar de '{propuesta.estado}' a '{cuerpo.estado}'",
+        )
+
+    actualizada = await repo.actualizar_estado(propuesta.id, empresa_id, cuerpo.estado)
+    # #7 · Al enviar la propuesta, la solicitud también avanza a 'enviada' (best-effort).
+    if cuerpo.estado == "enviada":
+        try:
+            await repo_sol.actualizar_estado(solicitud_id, empresa_id, "enviada")
+        except KeyError:
+            pass
+    return PropuestaDetalle(
+        id=str(actualizada.id),
+        total=actualizada.total,
+        estado=actualizada.estado,
+        componentes=[
+            ComponentePropuestaSalida(**c.model_dump()) for c in actualizada.componentes
+        ],
+        tareas=[TareaPropuestaSalida(**t.model_dump()) for t in actualizada.tareas],
     )
 
 
@@ -274,6 +339,7 @@ async def enviar_tareas_a_clickup(
     lista_id: str | None = None,
     entrada: EnvioClickUpEntrada | None = None,
     repo=Depends(obtener_repositorio_propuestas),
+    repo_sol=Depends(obtener_repositorio_solicitudes),
     clickup=Depends(obtener_cliente_clickup),
     settings=Depends(obtener_settings),
     empresa_id: UUID = Depends(obtener_empresa_actual),
@@ -330,5 +396,17 @@ async def enviar_tareas_a_clickup(
         raise HTTPException(
             status_code=502, detail="El servicio de ClickUp no está disponible"
         ) from exc
+
+    # #7 · El envío a ClickUp es el "envío" real: cierra el ciclo de vida. La propuesta y
+    # la solicitud avanzan a 'enviada'. Best-effort: si el store no tiene la fila (demo),
+    # no rompe el resultado del envío, que ya se concretó en ClickUp.
+    try:
+        await repo.actualizar_estado(propuesta.id, empresa_id, "enviada")
+    except KeyError:
+        pass
+    try:
+        await repo_sol.actualizar_estado(solicitud_id, empresa_id, "enviada")
+    except KeyError:
+        pass
 
     return ResultadoEnvioClickUp(creadas=creadas)

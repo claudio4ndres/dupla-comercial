@@ -21,6 +21,7 @@ from app.dependencias import (
     obtener_cliente_clickup,
     obtener_empresa_actual,
     obtener_repositorio_propuestas,
+    obtener_repositorio_solicitudes,
 )
 from app.main import app
 from app.repositorios.propuestas import (
@@ -29,6 +30,7 @@ from app.repositorios.propuestas import (
     RepositorioPropuestasEnMemoria,
     TareaPropuesta,
 )
+from app.repositorios.solicitudes import RepositorioSolicitudesEnMemoria, Solicitud
 from app.servicios.clickup_real import ErrorClickUp, ListaClickUp
 
 EMPRESA_A = uuid4()
@@ -71,11 +73,16 @@ def teardown_function():
     app.dependency_overrides.clear()
 
 
-def _http(*, clickup=None, repo=None, empresa_id=EMPRESA_A, settings=None):
+def _http(*, clickup=None, repo=None, empresa_id=EMPRESA_A, settings=None, repo_sol=None):
     if clickup is not None:
         app.dependency_overrides[obtener_cliente_clickup] = lambda: clickup
     if repo is not None:
         app.dependency_overrides[obtener_repositorio_propuestas] = lambda: repo
+    # Repo de solicitudes en memoria (el envío a ClickUp avanza su estado a 'enviada',
+    # #7): por defecto uno vacío; los tests que verifican el avance inyectan el suyo.
+    app.dependency_overrides[obtener_repositorio_solicitudes] = (
+        lambda: repo_sol if repo_sol is not None else RepositorioSolicitudesEnMemoria()
+    )
     app.dependency_overrides[obtener_empresa_actual] = lambda: empresa_id
     if settings is not None:
         # Fija la lista por defecto (fallback del POST) sin tocar el `.env`: el
@@ -174,6 +181,26 @@ def test_enviar_crea_una_tarea_por_cada_tarea_de_la_propuesta():
     assert "RRHH" in desc_reclutar
     assert "Coordinación" in desc_reclutar
     assert "3 días" in desc_reclutar
+
+
+def test_enviar_a_clickup_avanza_estados_a_enviada():
+    # #7 · al mandar las tareas a ClickUp (el envío real), la propuesta Y la solicitud
+    # avanzan a 'enviada' (cierran el ciclo de vida).
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    repo_sol = RepositorioSolicitudesEnMemoria(
+        [Solicitud(id=sol, empresa_id=EMPRESA_A, cuerpo="x", estado="propuesta")]
+    )
+    clickup = ClienteClickUpFake()
+    http = _http(clickup=clickup, repo=repo, repo_sol=repo_sol)
+
+    r = http.post(f"/solicitudes/{sol}/tareas/clickup?lista_id=L99")
+
+    assert r.status_code == 200
+    assert repo_sol.por_id(sol).estado == "enviada"
+    # La propuesta también quedó 'enviada' (el GET la devuelve así).
+    detalle = http.get(f"/solicitudes/{sol}/propuesta").json()
+    assert detalle["estado"] == "enviada"
 
 
 def test_enviar_usa_el_asignado_del_body_en_la_descripcion():

@@ -219,6 +219,18 @@ class PropuestaDetalle(BaseModel):
     tareas: list[TareaPropuestaSalida] = []
 
 
+# Estados del ciclo de vida de la propuesta (CHECK de `propuestas.estado`, 0001).
+EstadoPropuesta = Literal["borrador", "aprobada", "enviada"]
+
+
+class TransicionEstadoEntrada(BaseModel):
+    """Cuerpo del PATCH que transiciona el estado de la propuesta (#7). Pydantic ya
+    rechaza (422) cualquier valor fuera del enum borrador|aprobada|enviada; la validez
+    de la TRANSICIÓN (no saltarse pasos) la chequea el endpoint."""
+
+    estado: EstadoPropuesta
+
+
 # Lista de propuestas que consume la sección "Propuestas" del front (GET /propuestas).
 # Forma plana: cabecera de la propuesta + `asunto`/`remitente` de la solicitud ligada.
 # NUNCA trae `empresa_id` (CA5): al construirla explícitamente, lo interno queda fuera.

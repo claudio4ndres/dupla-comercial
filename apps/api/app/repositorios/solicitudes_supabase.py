@@ -132,6 +132,24 @@ class RepositorioSolicitudesSupabase:
             raise KeyError(solicitud_id)
         return Solicitud(**filas[0])
 
+    async def actualizar_estado(
+        self, solicitud_id: UUID, empresa_id: UUID, nuevo_estado: str
+    ) -> Solicitud:
+        """#7 · Avanza el estado del ciclo de vida de la solicitud (CHECK de la tabla:
+        nueva|en_conversacion|propuesta|enviada). La RLS filtra por la empresa del JWT
+        (regla #2); igual va `empresa_id` explícito como defensa en profundidad."""
+        resp = await self._peticion(
+            "PATCH",
+            f"/solicitudes?id=eq.{solicitud_id}&empresa_id=eq.{empresa_id}",
+            headers=self._headers({"Prefer": "return=representation"}),
+            json={"estado": nuevo_estado},
+        )
+        resp.raise_for_status()
+        filas = resp.json()
+        if not filas:
+            raise KeyError(solicitud_id)
+        return Solicitud(**filas[0])
+
     async def crear_desde_correo(
         self,
         empresa_id: UUID,
