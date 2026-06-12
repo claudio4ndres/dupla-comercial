@@ -120,6 +120,32 @@ class ClienteDriveReal:
             if self._cliente is None:
                 await http.aclose()
 
+    async def listar_recientes(self, page_size: int = 15) -> list[ArchivoDrive]:
+        """Lista los archivos MÁS RECIENTES de TODO el Drive de la empresa (sin acotar
+        a una carpeta), ordenados por `modifiedTime desc`. Alimenta el panel "Recursos ·
+        Drive" reflejando el Drive de CADA empresa (#6: ya NO una carpeta fija de
+        Capsulab). Excluye la papelera; pide sólo `id,name,mimeType` (lo justo para el
+        panel). Mismo refresh OAuth y manejo de `http`/`finally` que `listar_archivos`.
+        """
+        http = self._http()
+        try:
+            token = await self._access_token(http)
+            resp = await http.get(
+                f"{BASE_DRIVE}/files",
+                params={
+                    "q": "trashed=false",
+                    "fields": "files(id,name,mimeType)",
+                    "orderBy": "modifiedTime desc",
+                    "pageSize": page_size,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            resp.raise_for_status()
+            return [_a_archivo(f) for f in resp.json().get("files", []) or []]
+        finally:
+            if self._cliente is None:
+                await http.aclose()
+
     async def listar_carpetas(self) -> list[ArchivoDrive]:
         """Lista las CARPETAS (no archivos) del Drive del usuario. Es un DIAGNÓSTICO:
 

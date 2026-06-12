@@ -40,6 +40,7 @@ router = APIRouter(prefix="/clickup", tags=["clickup"])
 @router.get("/listas", response_model=list[ListaClickUpSalida])
 async def listar_listas(
     clickup=Depends(obtener_cliente_clickup),
+    repo=Depends(obtener_repositorio_integraciones),
     empresa_id: UUID = Depends(obtener_empresa_actual),
 ) -> list[ListaClickUpSalida]:
     """Listas reales del ClickUp del usuario (planas) para el selector de destino."""
@@ -53,6 +54,19 @@ async def listar_listas(
         raise HTTPException(
             status_code=502, detail="El servicio de ClickUp no está disponible"
         ) from exc
+
+    # Auto-heal de ClickUp (#5): un /listas OK PRUEBA que el token de ClickUp sirve. Si
+    # la integración clickup venía 'reconectar' (colateral de un fallo de Gmail antes
+    # del fix, o una falsa alarma), se restaura a 'conectado' SOLA — igual que el
+    # auto-heal de Gmail en la ingesta. Sólo la fila clickup (no toca gmail). Best-effort:
+    # si el repo falla, NO se rompe el listado, que ya respondió.
+    try:
+        integracion = await repo.obtener_por_empresa_y_proveedor(empresa_id, "clickup")
+        if integracion is not None and integracion.estado != "conectado":
+            await repo.marcar_estado(empresa_id, "conectado", "clickup")
+    except Exception:  # noqa: BLE001 — el auto-heal no debe tumbar el listado
+        pass
+
     return [
         ListaClickUpSalida(id=l.id, nombre=l.nombre, espacio=l.espacio)
         for l in listas

@@ -128,10 +128,16 @@ class RepositorioIntegracionesSupabase:
         )
         resp.raise_for_status()
 
-    async def marcar_estado(self, empresa_id: UUID, estado: str) -> None:
+    async def marcar_estado(
+        self, empresa_id: UUID, estado: str, proveedor: str
+    ) -> None:
+        """Marca el estado de la integración de UN proveedor (gmail/clickup) de la
+        empresa. Filtra por `empresa_id` Y `proveedor`: un fallo de gmail JAMÁS arrastra
+        a la fila clickup (ni viceversa) — el bug colateral que dejaba ClickUp atascado
+        en 'reconectar' por un error de Gmail (#5)."""
         resp = await self._peticion(
             "PATCH",
-            f"/integraciones?empresa_id=eq.{empresa_id}",
+            f"/integraciones?empresa_id=eq.{empresa_id}&proveedor=eq.{proveedor}",
             headers=self._headers(),
             json={"estado": estado},
         )

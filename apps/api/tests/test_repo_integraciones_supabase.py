@@ -114,17 +114,22 @@ async def test_actualizar_cursor_hace_patch_por_empresa():
     assert "cursor-nuevo" in visto["body"]
 
 
-async def test_marcar_estado_hace_patch_con_el_estado():
+async def test_marcar_estado_hace_patch_con_el_estado_filtrando_por_proveedor():
+    # #5 · marcar_estado es POR (empresa, proveedor): el PATCH filtra por AMBOS, así
+    # un fallo de gmail NO arrastra a la fila clickup de la misma empresa.
     visto = {}
 
     def handler(req: httpx.Request) -> httpx.Response:
         visto["method"] = req.method
+        visto["url"] = str(req.url)
         visto["body"] = req.content.decode()
         return httpx.Response(204)
 
-    await _repo(handler).marcar_estado(EMPRESA, "reconectar")
+    await _repo(handler).marcar_estado(EMPRESA, "reconectar", "gmail")
 
     assert visto["method"] == "PATCH"
+    assert f"empresa_id=eq.{EMPRESA}" in visto["url"]
+    assert "proveedor=eq.gmail" in visto["url"]  # SÓLO la fila gmail
     assert "reconectar" in visto["body"]
 
 

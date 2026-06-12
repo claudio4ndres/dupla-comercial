@@ -184,6 +184,64 @@ async def test_listar_carpetas_pide_solo_carpetas_y_parsea_la_respuesta():
     assert "trashed=false" in q
 
 
+# --- listar_recientes: archivos más recientes de TODO el Drive (panel) --------
+
+async def test_listar_recientes_pide_los_mas_recientes_de_todo_el_drive():
+    # #6 · El panel "Recursos · Drive" refleja el Drive de CADA empresa (no una carpeta
+    # fija hardcodeada de Capsulab): los archivos más recientes de TODO su Drive,
+    # ordenados por modifiedTime desc, sin acotar a una carpeta.
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    files = [
+        {"id": "f1", "name": "Tarifario 2026.xlsx",
+         "mimeType": "application/vnd.google-apps.spreadsheet"},
+        {"id": "f2", "name": "Brief Carolina Herrera",
+         "mimeType": "application/vnd.google-apps.document"},
+    ]
+    handler = _ruteador(registro, files=files)
+    cliente = ClienteDriveReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(handler),
+    )
+
+    archivos = await cliente.listar_recientes()
+
+    assert [a.nombre for a in archivos] == [
+        "Tarifario 2026.xlsx", "Brief Carolina Herrera"
+    ]
+    a = archivos[0]
+    assert isinstance(a, ArchivoDrive)
+    assert a.id == "f1"
+
+    # El refresh OAuth ocurrió y el listado usó el access token fresco.
+    token_req = next(r for r in registro if r.url.path.endswith("/token"))
+    assert REFRESH in token_req.content.decode()
+    files_req = next(r for r in registro if r.url.path.endswith("/files"))
+    assert files_req.headers["authorization"] == "Bearer ya29.token-fresco"
+    # NO se acota a ninguna carpeta (sin `in parents`): es TODO el Drive de la empresa.
+    q = files_req.url.params["q"]
+    assert "in parents" not in q
+    assert "trashed=false" in q
+    # Ordenado por fecha de modificación descendente (los más recientes primero).
+    assert files_req.url.params["orderBy"] == "modifiedTime desc"
+    assert files_req.url.params["fields"] == "files(id,name,mimeType)"
+    # Acotado para el panel (no traer el Drive entero).
+    assert int(files_req.url.params["pageSize"]) <= 30
+
+
+async def test_listar_recientes_drive_vacio_devuelve_lista_vacia():
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    cliente = ClienteDriveReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(_ruteador(registro, files=[])),
+    )
+
+    assert await cliente.listar_recientes() == []
+
+
 # --- buscar_archivos: busca en TODO el Drive (nombre + contenido) -------------
 
 async def test_buscar_archivos_busca_en_todo_el_drive_por_nombre_y_contenido():

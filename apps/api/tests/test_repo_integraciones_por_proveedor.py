@@ -64,6 +64,21 @@ async def test_memoria_no_cruza_empresas():
     assert await repo.obtener_por_empresa_y_proveedor(EMPRESA, "clickup") is None
 
 
+async def test_memoria_marcar_estado_solo_toca_la_fila_de_su_proveedor():
+    # #5 · marcar_estado('reconectar', 'gmail') NO debe arrastrar la fila clickup de la
+    # MISMA empresa (el bug colateral: un fallo de Gmail dejaba ClickUp 'reconectar').
+    repo = RepositorioIntegracionesEnMemoria(
+        [_integ("gmail"), _integ("clickup")]
+    )
+
+    await repo.marcar_estado(EMPRESA, "reconectar", "gmail")
+
+    gmail = await repo.obtener_por_empresa_y_proveedor(EMPRESA, "gmail")
+    clickup = await repo.obtener_por_empresa_y_proveedor(EMPRESA, "clickup")
+    assert gmail.estado == "reconectar"  # la fila gmail SÍ cambió
+    assert clickup.estado == "conectado"  # la fila clickup quedó intacta
+
+
 # ── Supabase (PostgREST, sin red) ────────────────────────────────────────────
 
 

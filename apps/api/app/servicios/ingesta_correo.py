@@ -59,7 +59,10 @@ async def ingerir_correos_nuevos(
     try:
         mensajes, nuevo_cursor = await gmail.listar_nuevos(integracion.cursor)
     except ErrorAutenticacionGmail:
-        await repo_integraciones.marcar_estado(integracion.empresa_id, "reconectar")
+        # Sólo la fila gmail (#5): no tocar la integración clickup de la empresa.
+        await repo_integraciones.marcar_estado(
+            integracion.empresa_id, "reconectar", "gmail"
+        )
         return ResultadoIngesta(
             empresa_id=integracion.empresa_id, creadas=0, estado="reconectar"
         )
@@ -98,7 +101,9 @@ async def ingerir_correos_nuevos(
             integracion.empresa_id,
             integracion.estado,
         )
-        await repo_integraciones.marcar_estado(integracion.empresa_id, "conectado")
+        await repo_integraciones.marcar_estado(
+            integracion.empresa_id, "conectado", "gmail"
+        )
     return ResultadoIngesta(
         empresa_id=integracion.empresa_id, creadas=creadas, estado="conectado"
     )

@@ -3,7 +3,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
-from app.config import obtener_settings
 from app.dependencias import (
     obtener_cliente_anthropic,
     obtener_cliente_clickup,
@@ -341,22 +340,22 @@ async def enviar_tareas_a_clickup(
     repo=Depends(obtener_repositorio_propuestas),
     repo_sol=Depends(obtener_repositorio_solicitudes),
     clickup=Depends(obtener_cliente_clickup),
-    settings=Depends(obtener_settings),
     empresa_id: UUID = Depends(obtener_empresa_actual),
 ) -> ResultadoEnvioClickUp:
     """Crea las tareas de la propuesta como tareas REALES en ClickUp (conector).
 
-    La lista destino la ELIGE el usuario en la UI y llega como query `lista_id`; si no
-    viene, cae a la lista por defecto (`settings.clickup_list_id`, fallback por-empresa).
-    Si no hay ninguna lista → 400 ("elige una lista"). La propuesta se lee SÓLO de la
-    empresa del usuario (RLS); sin propuesta → 404. Si ClickUp cae → 502. Devuelve
-    cuántas tareas se crearon. El token vive sólo en el backend (regla de oro #3).
+    La lista destino la ELIGE el usuario en la UI y llega como query `lista_id`. Si no
+    viene → 400 ("elige una lista"). NO hay fallback global (#6): un `CLICKUP_LIST_ID`
+    compartido mandaría las tareas de una empresa a la lista de OTRA — jamás se manda a
+    una lista ajena bajo ninguna circunstancia. La propuesta se lee SÓLO de la empresa
+    del usuario (RLS); sin propuesta → 404. Si ClickUp cae → 502. Devuelve cuántas tareas
+    se crearon. El token vive sólo en el backend (regla de oro #3).
 
     Body OPCIONAL `asignados` (0006): mapa nombre_de_tarea → persona asignada (el roster
     de `/miembros` que el usuario eligió en el selector de la pantalla de Tareas). Si una
     tarea está en el mapa, su persona viaja en la descripción de ClickUp; si no, cae a su
     `responsable` (comportamiento actual). El body es opcional: sin él, todo sigue igual."""
-    lista_destino = lista_id or settings.clickup_list_id
+    lista_destino = lista_id
     if not lista_destino:
         raise HTTPException(
             status_code=400,

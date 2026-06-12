@@ -5,8 +5,9 @@ empresa del usuario (aislamiento multi-tenant por RLS; la empresa sale del JWT).
 
 Origen de los datos (Drive real v1):
 * si la empresa tiene una integración Gmail/Google conectada, lista los NOMBRES
-  REALES de los archivos de su carpeta del Drive (vía `ClienteDriveReal`, que refresca
-  el token de la empresa — regla de oro #3, el secreto sólo en el backend);
+  REALES de los archivos más RECIENTES de SU Drive (vía `ClienteDriveReal.listar_recientes`,
+  que refresca el token de la empresa — regla de oro #3, el secreto sólo en el backend).
+  Refleja el Drive de CADA empresa (#6: ya NO una carpeta fija hardcodeada de Capsulab);
 * si no hay integración/token, o el Drive falla, cae al catálogo SEMBRADO (los
   `origen` de la tabla `catalogo`). El panel nunca se rompe por un fallo del Drive.
 """
@@ -15,7 +16,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.config import obtener_settings
 from app.dependencias import (
     obtener_empresa_actual,
     obtener_fabrica_cliente_drive,
@@ -45,9 +45,9 @@ async def listar_recursos(
     if integracion is not None and integracion.token_ref:
         try:
             cliente = fabrica_drive.crear(integracion)
-            archivos = await cliente.listar_archivos(
-                obtener_settings().drive_folder_id
-            )
+            # #6 · Los más recientes de TODO el Drive de ESTA empresa (no una carpeta
+            # fija hardcodeada de Capsulab).
+            archivos = await cliente.listar_recientes()
             # El Drive respondió (aunque sea vacío): es la fuente de verdad.
             return [a.nombre for a in archivos]
         except Exception:

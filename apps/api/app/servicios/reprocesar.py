@@ -59,7 +59,10 @@ async def reprocesar_correos(
         try:
             mensaje = await gmail.obtener_mensaje(sol.gmail_msg_id)
         except ErrorAutenticacionGmail:
-            await repo_integraciones.marcar_estado(integracion.empresa_id, "reconectar")
+            # Sólo la fila gmail (#5): no arrastrar la integración clickup de la empresa.
+            await repo_integraciones.marcar_estado(
+                integracion.empresa_id, "reconectar", "gmail"
+            )
             break
         if mensaje is None:
             continue  # el correo ya no existe en Gmail

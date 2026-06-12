@@ -4,9 +4,9 @@
     usuario (para el selector de la UI). Sin token configurado → 200 con [] (el front
     muestra "conecta ClickUp"). Si ClickUp cae → 502.
   * POST /solicitudes/{id}/tareas/clickup → crea las tareas de la propuesta como
-    tareas reales en la lista elegida (query `lista_id`) o, si no viene, en la lista
-    por defecto (`settings.clickup_list_id`). Sin lista → 400. Sin propuesta → 404.
-    Si ClickUp cae → 502. Devuelve {"creadas": N}.
+    tareas reales en la lista elegida (query `lista_id`). Sin `lista_id` → 400 (#6: NO
+    hay fallback global; jamás se manda a la lista de otra empresa). Sin propuesta →
+    404. Si ClickUp cae → 502. Devuelve {"creadas": N}.
 
 Todo con dobles en memoria: cero red, cero ClickUp real (CA: las APIs externas se
 mockean). El cliente ClickUp se inyecta con un doble vía `app.dependency_overrides`;
@@ -20,10 +20,12 @@ from app.config import Settings, obtener_settings
 from app.dependencias import (
     obtener_cliente_clickup,
     obtener_empresa_actual,
+    obtener_repositorio_integraciones,
     obtener_repositorio_propuestas,
     obtener_repositorio_solicitudes,
 )
 from app.main import app
+from app.repositorios.integraciones import RepositorioIntegracionesEnMemoria
 from app.repositorios.propuestas import (
     ComponentePropuesta,
     Propuesta,
@@ -78,6 +80,12 @@ def _http(*, clickup=None, repo=None, empresa_id=EMPRESA_A, settings=None, repo_
         app.dependency_overrides[obtener_cliente_clickup] = lambda: clickup
     if repo is not None:
         app.dependency_overrides[obtener_repositorio_propuestas] = lambda: repo
+    # GET /clickup/listas resuelve el repo de integraciones para el auto-heal (#5):
+    # un repo en memoria vacío por defecto (sin integración clickup → el auto-heal es
+    # no-op). Los tests de auto-heal viven en test_endpoint_clickup_oauth.py.
+    app.dependency_overrides[obtener_repositorio_integraciones] = (
+        lambda: RepositorioIntegracionesEnMemoria([])
+    )
     # Repo de solicitudes en memoria (el envío a ClickUp avanza su estado a 'enviada',
     # #7): por defecto uno vacío; los tests que verifican el avance inyectan el suyo.
     app.dependency_overrides[obtener_repositorio_solicitudes] = (
@@ -142,6 +150,9 @@ def test_listas_sin_token_devuelve_200_y_lista_vacia():
 
     app.dependency_overrides[obtener_cliente_clickup] = lambda: ClienteClickUp("")
     app.dependency_overrides[obtener_empresa_actual] = lambda: EMPRESA_A
+    app.dependency_overrides[obtener_repositorio_integraciones] = (
+        lambda: RepositorioIntegracionesEnMemoria([])
+    )
     http = TestClient(app)
 
     r = http.get("/clickup/listas")
@@ -264,31 +275,22 @@ def test_enviar_sin_body_mantiene_comportamiento_actual():
     assert "Coordinación" in desc_reclutar
 
 
-def test_enviar_usa_lista_por_defecto_si_no_viene_query():
+def test_enviar_sin_lista_devuelve_400_no_manda_a_lista_ajena():
+    # #6 · Se ELIMINÓ el fallback global `settings.clickup_list_id`: si no viene
+    # `lista_id`, el endpoint responde 400 ("elige una lista") en vez de mandar a una
+    # lista por defecto que podría ser de OTRA empresa. Aunque haya un clickup_list_id
+    # global configurado, NO se usa (jamás se manda a una lista ajena).
     sol = uuid4()
     repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
     clickup = ClienteClickUpFake()
-    settings = Settings(_env_file=None, clickup_list_id="LISTA_DEFAULT")
-    http = _http(clickup=clickup, repo=repo, settings=settings)
-
-    r = http.post(f"/solicitudes/{sol}/tareas/clickup")
-
-    assert r.status_code == 200
-    assert r.json() == {"creadas": 2}
-    assert {c[0] for c in clickup.creadas} == {"LISTA_DEFAULT"}
-
-
-def test_enviar_sin_lista_ni_defecto_devuelve_400():
-    sol = uuid4()
-    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
-    clickup = ClienteClickUpFake()
-    settings = Settings(_env_file=None, clickup_list_id="")  # sin fallback
+    # Aunque exista un global, NO debe usarse como destino.
+    settings = Settings(_env_file=None, clickup_list_id="LISTA_DE_OTRA_EMPRESA")
     http = _http(clickup=clickup, repo=repo, settings=settings)
 
     r = http.post(f"/solicitudes/{sol}/tareas/clickup")
 
     assert r.status_code == 400
-    assert clickup.creadas == []  # no se intentó crear nada
+    assert clickup.creadas == []  # no se intentó crear nada en ninguna lista
 
 
 def test_enviar_sin_propuesta_devuelve_404():

@@ -91,8 +91,9 @@ async def poller_correo(
                 "se marca 'reconectar' y se sigue.",
                 integracion.empresa_id,
             )
+            # Sólo la fila gmail (#5): no tocar la integración clickup de la empresa.
             await repo_integraciones.marcar_estado(
-                integracion.empresa_id, "reconectar"
+                integracion.empresa_id, "reconectar", "gmail"
             )
         except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
             # Error NO-auth (409 de BD, Secret Manager, red…): se aísla y se sigue,
@@ -143,8 +144,9 @@ async def reprocesar_correo(
                 "Reproceso: la empresa %s falló; se sigue con las demás.",
                 integracion.empresa_id,
             )
+            # Sólo la fila gmail (#5): el reproceso es gmail-only.
             await repo_integraciones.marcar_estado(
-                integracion.empresa_id, "reconectar"
+                integracion.empresa_id, "reconectar", "gmail"
             )
     return ResumenReproceso(revisadas=revisadas, reclasificadas=reclasificadas)
 

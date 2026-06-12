@@ -5,8 +5,9 @@ Lista los recursos del Drive de la empresa del usuario. Sólo de su empresa
 
 Comportamiento (Drive real v1):
 * si la empresa tiene una integración Gmail/Google conectada, devuelve los NOMBRES
-  REALES de los archivos de la carpeta del Drive (vía la fábrica de cliente Drive);
-* si el Drive falla, o no hay integración/carpeta, cae al catálogo sembrado (los
+  REALES de los archivos más RECIENTES de SU Drive (#6: TODO el Drive de la empresa,
+  por `listar_recientes`, NO una carpeta fija hardcodeada de Capsulab);
+* si el Drive falla, o no hay integración/token, cae al catálogo sembrado (los
   `origen` de la tabla `catalogo`) — el panel nunca se rompe.
 """
 from uuid import uuid4
@@ -43,13 +44,19 @@ def _integracion(empresa_id=EMPRESA_A):
 
 
 class _ClienteDriveFalso:
-    """Doble del cliente Drive: devuelve archivos fijos o levanta un error."""
+    """Doble del cliente Drive: devuelve archivos fijos o levanta un error.
+
+    #6 · El panel ahora pide los RECIENTES de TODO el Drive de la empresa
+    (`listar_recientes`, sin carpeta), no los de una carpeta fija. `recientes_llamado`
+    deja constancia de que el panel usó esa vía (no `listar_archivos`)."""
 
     def __init__(self, *, archivos=None, error: Exception | None = None):
         self._archivos = archivos or []
         self._error = error
+        self.recientes_llamado = False
 
-    async def listar_archivos(self, folder_id: str):
+    async def listar_recientes(self):
+        self.recientes_llamado = True
         if self._error is not None:
             raise self._error
         return list(self._archivos)
@@ -107,7 +114,7 @@ def test_recursos_sin_catalogo_ni_integracion_devuelve_lista_vacia():
     assert r.json() == []
 
 
-# --- Con integración: nombres REALES de la carpeta del Drive ------------------
+# --- Con integración: nombres REALES de los RECIENTES del Drive de la empresa --
 
 def test_recursos_con_drive_conectado_devuelve_nombres_reales():
     # El catálogo trae OTROS nombres: si saliera el catálogo, el test fallaría.
@@ -130,6 +137,9 @@ def test_recursos_con_drive_conectado_devuelve_nombres_reales():
 
     assert r.status_code == 200
     assert r.json() == ["Tarifario 2026.xlsx", "Casos BTL"]
+    # #6 · El panel reflejó el Drive de la empresa vía `listar_recientes` (TODO su
+    # Drive), NO una carpeta fija hardcodeada.
+    assert drive.recientes_llamado is True
 
 
 def test_recursos_drive_vacio_devuelve_lista_vacia():

@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from app.dependencias import (
     obtener_almacen_estado_oauth,
     obtener_almacen_secretos,
+    obtener_cliente_clickup,
     obtener_cliente_oauth_clickup,
     obtener_config_oauth_clickup,
     obtener_empresa_actual,
@@ -32,6 +33,7 @@ from app.repositorios.integraciones import (
     Integracion,
     RepositorioIntegracionesEnMemoria,
 )
+from app.servicios.clickup_real import ErrorClickUp
 from app.servicios.oauth_clickup import ConfigOAuthClickUp, CredencialesClickUp
 from app.servicios.secretos import AlmacenSecretosEnMemoria
 from tests.dobles import ClienteOAuthClickUpFake
@@ -307,3 +309,101 @@ def test_desconectar_sin_integracion_es_idempotente_204():
     r = http.delete("/clickup")
 
     assert r.status_code == 204
+
+
+# ── #5 · Auto-heal de ClickUp en GET /clickup/listas ─────────────────────────
+
+
+class _ClickUpListasOK:
+    """Doble de ClienteClickUp con token y listas: representa un token SANO."""
+
+    tiene_token = True
+
+    def __init__(self, listas=None):
+        self._listas = listas or []
+
+    async def listar_listas(self):
+        return list(self._listas)
+
+
+class _ClickUpListasFalla:
+    """Doble que cae al pedir listas (token inválido/5xx): NO debe auto-sanar."""
+
+    tiene_token = True
+
+    async def listar_listas(self):
+        raise ErrorClickUp("ClickUp respondió 500 al pedir /team")
+
+
+def _http_listas(clickup, repo, empresa_id=EMPRESA_A):
+    app.dependency_overrides[obtener_cliente_clickup] = lambda: clickup
+    app.dependency_overrides[obtener_repositorio_integraciones] = lambda: repo
+    app.dependency_overrides[obtener_empresa_actual] = lambda: empresa_id
+    return TestClient(app)
+
+
+def test_listas_ok_devuelve_clickup_de_reconectar_a_conectado():
+    # #5 · Un /listas que responde OK PRUEBA que el token de ClickUp sirve. Si la
+    # integración clickup venía 'reconectar' (colateral de un fallo de Gmail ya
+    # corregido), se restaura a 'conectado' SOLA, igual que el auto-heal de Gmail.
+    repo = RepositorioIntegracionesEnMemoria(
+        [_integ_clickup(estado="reconectar")]
+    )
+    http = _http_listas(_ClickUpListasOK(), repo)
+
+    r = http.get("/clickup/listas")
+
+    assert r.status_code == 200
+    integ = asyncio.run(repo.obtener_por_empresa_y_proveedor(EMPRESA_A, "clickup"))
+    assert integ.estado == "conectado"  # se auto-sanó
+
+
+def test_listas_ok_no_toca_la_fila_gmail_de_la_misma_empresa():
+    # El auto-heal de ClickUp es POR proveedor: NO debe tocar la fila gmail (que
+    # podría estar legítimamente en 'reconectar' por su propio token caído).
+    gmail = Integracion(
+        id=uuid4(), empresa_id=EMPRESA_A, proveedor="gmail",
+        token_ref="secreto://gmail", estado="reconectar",
+    )
+    repo = RepositorioIntegracionesEnMemoria(
+        [gmail, _integ_clickup(estado="reconectar")]
+    )
+    http = _http_listas(_ClickUpListasOK(), repo)
+
+    r = http.get("/clickup/listas")
+
+    assert r.status_code == 200
+    integ_gmail = asyncio.run(
+        repo.obtener_por_empresa_y_proveedor(EMPRESA_A, "gmail")
+    )
+    assert integ_gmail.estado == "reconectar"  # gmail intacto
+
+
+def test_listas_ok_no_reescribe_si_ya_estaba_conectado():
+    # Si ya estaba 'conectado', el endpoint NO necesita reescribir (no-op): el estado
+    # se mantiene 'conectado'.
+    repo = RepositorioIntegracionesEnMemoria(
+        [_integ_clickup(estado="conectado")]
+    )
+    http = _http_listas(_ClickUpListasOK(), repo)
+
+    r = http.get("/clickup/listas")
+
+    assert r.status_code == 200
+    integ = asyncio.run(repo.obtener_por_empresa_y_proveedor(EMPRESA_A, "clickup"))
+    assert integ.estado == "conectado"
+
+
+def test_listas_si_clickup_falla_no_auto_sana():
+    # Si ClickUp CAE, el token NO está probado: la integración sigue 'reconectar'
+    # (no se auto-sana por un fallo) y el endpoint responde 502.
+    repo = RepositorioIntegracionesEnMemoria(
+        [_integ_clickup(estado="reconectar")]
+    )
+    http = _http_listas(_ClickUpListasFalla(), repo)
+
+    r = http.get("/clickup/listas")
+
+    assert r.status_code == 502
+    integ = asyncio.run(repo.obtener_por_empresa_y_proveedor(EMPRESA_A, "clickup"))
+    assert integ.estado == "reconectar"  # NO se sanó

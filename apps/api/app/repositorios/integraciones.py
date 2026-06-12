@@ -34,7 +34,9 @@ class RepositorioIntegraciones(Protocol):
     async def actualizar_cursor(
         self, empresa_id: UUID, cursor: str | None
     ) -> None: ...
-    async def marcar_estado(self, empresa_id: UUID, estado: str) -> None: ...
+    async def marcar_estado(
+        self, empresa_id: UUID, estado: str, proveedor: str
+    ) -> None: ...
     async def eliminar(self, empresa_id: UUID) -> None: ...
     async def eliminar_por_proveedor(
         self, empresa_id: UUID, proveedor: str
@@ -79,10 +81,15 @@ class RepositorioIntegracionesEnMemoria:
             if clave[0] == empresa_id:
                 self._por_clave[clave] = integ.model_copy(update={"cursor": cursor})
 
-    async def marcar_estado(self, empresa_id: UUID, estado: str) -> None:
-        for clave, integ in list(self._por_clave.items()):
-            if clave[0] == empresa_id:
-                self._por_clave[clave] = integ.model_copy(update={"estado": estado})
+    async def marcar_estado(
+        self, empresa_id: UUID, estado: str, proveedor: str
+    ) -> None:
+        # Por (empresa, proveedor): marca SÓLO la fila de ese proveedor. Así un fallo
+        # de gmail no arrastra a la fila clickup de la misma empresa (#5).
+        clave = (empresa_id, proveedor)
+        integ = self._por_clave.get(clave)
+        if integ is not None:
+            self._por_clave[clave] = integ.model_copy(update={"estado": estado})
 
     async def eliminar(self, empresa_id: UUID) -> None:
         # Borra TODAS las integraciones de la empresa (comportamiento histórico del
