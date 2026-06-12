@@ -209,6 +209,50 @@ async def test_history_404_resincroniza_desde_cero_sin_reventar():
     assert nuevo_cursor == "888"  # cursor nuevo desde el profile (no reventó)
 
 
+async def test_mensaje_borrado_404_se_salta_sin_reventar_el_poll():
+    # Si UN correo da 404 al bajarlo (fue BORRADO entre que el history lo listó y
+    # ahora), antes el list-comprehension reventaba el poll entero y el cursor jamás
+    # avanzaba → el poller quedaba atascado PARA SIEMPRE en ese correo. Ahora se SALTA
+    # el borrado, se ingieren los demás y el cursor avanza igual.
+    registro: list = []
+    almacen, token_ref = await _almacen_con_refresh()
+    history = {
+        "history": [
+            {"id": "501", "messagesAdded": [{"message": {"id": "msg-vivo"}}]},
+            {"id": "502", "messagesAdded": [{"message": {"id": "msg-borrado"}}]},
+        ],
+        "historyId": "777",
+    }
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        registro.append(req)
+        path = req.url.path
+        if path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3599,
+                                             "token_type": "Bearer"})
+        if path.endswith("/history"):
+            return httpx.Response(200, json=history)
+        msg_id = path.rsplit("/", 1)[1]
+        if msg_id == "msg-borrado":
+            return httpx.Response(404, json={"error": {"code": 404}})  # correo borrado
+        return httpx.Response(
+            200,
+            json=_mensaje_texto_plano(msg_id, "A <a@x.cl>", "Hola", "vivo"),
+        )
+
+    cliente = ClienteGmailReal(
+        almacen=almacen, token_ref=token_ref,
+        client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
+        cliente=_cliente_http(handler),
+    )
+
+    msgs, nuevo_cursor = await cliente.listar_nuevos("500")
+
+    # El borrado se saltó; el vivo se ingirió; el cursor avanzó (no se atascó).
+    assert [m.gmail_msg_id for m in msgs] == ["msg-vivo"]
+    assert nuevo_cursor == "777"
+
+
 async def test_primer_sync_pagina_con_next_page_token():
     # Auditoría #9: el primer sync PAGINA (antes solo traía la primera página de 50).
     registro: list = []

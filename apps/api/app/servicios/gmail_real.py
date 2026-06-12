@@ -179,7 +179,14 @@ class ClienteGmailReal:
                 ids, nuevo_cursor = await self._ids_por_historial(http, cursor, cabeceras)
             else:
                 ids, nuevo_cursor = await self._ids_iniciales(http, cabeceras)
-            mensajes = [await self._obtener_mensaje(http, mid, cabeceras) for mid in ids]
+            # Saltar correos borrados: si UNO da 404 no debe reventar el poll entero.
+            # Antes el list-comprehension fallaba con el primer 404 y el cursor jamás
+            # avanzaba → el poller quedaba atascado para siempre en ese correo.
+            mensajes: list[MensajeCorreo] = []
+            for mid in ids:
+                msg = await self._obtener_mensaje(http, mid, cabeceras)
+                if msg is not None:
+                    mensajes.append(msg)
             return mensajes, nuevo_cursor
         finally:
             if self._cliente is None:
@@ -273,12 +280,19 @@ class ClienteGmailReal:
 
     async def _obtener_mensaje(
         self, http: httpx.AsyncClient, msg_id: str, cabeceras: dict
-    ) -> MensajeCorreo:
+    ) -> MensajeCorreo | None:
+        """Baja UN mensaje (format=full). Si Gmail responde 404, el correo fue BORRADO
+        entre que el history lo listó y ahora: devolvemos None para SALTARLO. Antes el
+        404 reventaba el loop de `listar_nuevos` → el poll fallaba y el cursor jamás
+        avanzaba (el poller quedaba atascado para siempre en el correo borrado)."""
         resp = await http.get(
             f"{BASE_GMAIL}/messages/{msg_id}",
             params={"format": "full"},
             headers=cabeceras,
         )
+        if resp.status_code == 404:
+            _LOG.warning("Mensaje %s no existe (404, borrado): se salta.", msg_id)
+            return None
         resp.raise_for_status()
         return _a_mensaje(resp.json())
 

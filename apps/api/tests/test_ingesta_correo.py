@@ -148,3 +148,27 @@ async def test_si_la_clasificacion_falla_igual_ingiere_sin_resumen():
     s = next(iter(repo_sol._por_id.values()))
     assert s.tipo == "sin_clasificar"
     assert not s.resumen  # None o ""
+
+
+async def test_poll_exitoso_devuelve_a_conectado_si_venia_de_reconectar():
+    # Auto-heal: una integración marcada 'reconectar' (falsa alarma pasada, p.ej. el
+    # bug del 409/404 ya corregido) que vuelve a pollear OK PRUEBA que el token sirve →
+    # se restaura a 'conectado' SOLA y se PERSISTE, sin reconexión manual ni SQL. Así el
+    # banner 'reconectar' del front se borra en el siguiente poll automático.
+    integ = Integracion(
+        id=uuid4(),
+        empresa_id=EMPRESA,
+        token_ref="secreto://capsulab",
+        casilla="javier@capsulab.cl",
+        cursor="h1",
+        estado="reconectar",
+    )
+    repo_sol = RepositorioSolicitudesEnMemoria()
+    repo_int = RepositorioIntegracionesEnMemoria([integ])
+    gmail = ClienteGmailFake([_mensaje("m1")], nuevo_cursor="h2")
+
+    resultado = await ingerir_correos_nuevos(integ, gmail, repo_sol, repo_int)
+
+    assert resultado.creadas == 1
+    actualizada = await repo_int.obtener_por_empresa(EMPRESA)
+    assert actualizada.estado == "conectado"  # se persistió el auto-heal

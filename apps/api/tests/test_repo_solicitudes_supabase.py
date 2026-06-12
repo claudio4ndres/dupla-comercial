@@ -132,11 +132,12 @@ async def test_crear_desde_correo_duplicado_devuelve_false():
     assert creada is False
 
 
-async def test_crear_desde_correo_apunta_on_conflict_al_indice_unico():
-    # El bug del 409: `resolution=ignore-duplicates` sólo cubre la PK; el índice
-    # único es PARCIAL y secundario (empresa_id, gmail_msg_id). Sin `on_conflict`
-    # en la URL, PostgREST hace ON CONFLICT contra la PK y un duplicado de ese
-    # índice tira 409. Verificamos que el POST apunta el ON CONFLICT al índice.
+async def test_crear_desde_correo_no_usa_on_conflict_por_indice_parcial():
+    # El índice único es PARCIAL (`where gmail_msg_id is not null`). Postgres exige que
+    # la inferencia del ON CONFLICT repita ese predicado, y PostgREST NO lo agrega: si
+    # mandáramos `?on_conflict=empresa_id,gmail_msg_id` respondería 400 ("no unique or
+    # exclusion constraint matching") y reventaría TODO insert — el bug que tumbaba el
+    # poll en prod. Por eso el POST va LIMPIO; la idempotencia la da el 409-catch.
     visto = {}
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -154,9 +155,8 @@ async def test_crear_desde_correo_apunta_on_conflict_al_indice_unico():
         ),
     )
 
-    assert "on_conflict=empresa_id%2Cgmail_msg_id" in visto["url"] or (
-        "on_conflict=empresa_id,gmail_msg_id" in visto["url"]
-    )
+    assert "on_conflict" not in visto["url"]
+    assert visto["url"].endswith("/rest/v1/solicitudes")
 
 
 async def test_crear_desde_correo_409_es_idempotente_no_lanza_y_devuelve_false():

@@ -89,6 +89,16 @@ async def ingerir_correos_nuevos(
             creadas += 1
 
     await repo_integraciones.actualizar_cursor(integracion.empresa_id, nuevo_cursor)
+    # Auto-heal: un poll exitoso PRUEBA que el token sirve. Si la integración venía de
+    # una falsa alarma pasada ('reconectar' por el bug del 409/404 ya corregido), la
+    # devolvemos a 'conectado' sola — sin pedir reconexión manual ni SQL.
+    if integracion.estado != "conectado":
+        _LOG.info(
+            "Ingesta: empresa %s polló OK viniendo de '%s'; se restaura a 'conectado'.",
+            integracion.empresa_id,
+            integracion.estado,
+        )
+        await repo_integraciones.marcar_estado(integracion.empresa_id, "conectado")
     return ResultadoIngesta(
         empresa_id=integracion.empresa_id, creadas=creadas, estado="conectado"
     )
