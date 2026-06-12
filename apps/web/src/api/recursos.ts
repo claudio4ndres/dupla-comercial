@@ -4,7 +4,7 @@
 // (RLS). Aquí se mapea cada uno a un `RecursoDrive` con un icono según su tipo. Antes
 // este panel era un mock estático; ahora es dinámico por empresa.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 import type { RecursoDrive } from '../datosMock'
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
@@ -26,7 +26,7 @@ function iconoPara(origen: string): string {
  */
 export async function obtenerRecursosDrive(): Promise<RecursoDrive[]> {
   try {
-    const r = await fetch(`${API_BASE}/catalogo/recursos`, { headers: cabecerasAuth() })
+    const r = await fetch(`${API_BASE}/catalogo/recursos`, { headers: await cabecerasAuthAsync() })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as string[]
     return data.map((origen) => ({ icono: iconoPara(origen), nombre: origen }))

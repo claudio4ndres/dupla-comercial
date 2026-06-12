@@ -8,7 +8,7 @@
 // del Drive) + las `fuentes` que citó. Si el backend no responde, cae a una respuesta
 // simulada (`respuestaFallback`) para que el demo siga.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 import type { Componente, Fuente, Mensaje, Tarea, TipoConfirmado } from '../tipos'
 
 // Base de la API. En dev se puede apuntar con VITE_API_URL; por defecto el proxy /api.
@@ -80,7 +80,7 @@ export async function conversarConJavo(params: {
   try {
     const r = await fetch(`${API_BASE}/conversaciones/responder`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...cabecerasAuth() },
+      headers: { 'Content-Type': 'application/json', ...(await cabecerasAuthAsync()) },
       body: JSON.stringify({
         solicitud_id: params.solicitudId,
         tipo: params.tipo,

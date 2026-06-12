@@ -5,7 +5,7 @@
 // recibe el blob y se dispara la descarga en el navegador. Ante cualquier fallo
 // (404 sin propuesta, backend caído) devuelve `false` para no romper la UI.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 
@@ -24,7 +24,7 @@ export async function descargarCotizacionExcel(
   try {
     const r = await fetch(
       `${API_BASE}/solicitudes/${solicitudId}/cotizacion.xlsx?vista=${vista}`,
-      { headers: cabecerasAuth() },
+      { headers: await cabecerasAuthAsync() },
     )
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
 
@@ -52,7 +52,7 @@ export async function descargarCotizacionPpt(solicitudId: string): Promise<boole
   try {
     const r = await fetch(
       `${API_BASE}/solicitudes/${solicitudId}/propuesta.pptx`,
-      { headers: cabecerasAuth() },
+      { headers: await cabecerasAuthAsync() },
     )
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
 

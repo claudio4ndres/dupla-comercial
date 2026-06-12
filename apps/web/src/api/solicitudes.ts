@@ -5,7 +5,7 @@
 // cortos de la UI (`t1`/`t2`/`new`), que coinciden con las clases CSS del
 // prototipo. Así el resto del front sigue hablando su propio dialecto.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 import type { Solicitud, TipoSolicitud } from '../tipos'
 
 // Base de la API. En dev se apunta con VITE_API_URL; por defecto, el proxy /api.
@@ -62,7 +62,7 @@ function aSolicitud(s: SolicitudBackend): Solicitud {
  */
 export async function obtenerSolicitudes(): Promise<Solicitud[]> {
   try {
-    const r = await fetch(`${API_BASE}/solicitudes`, { headers: cabecerasAuth() })
+    const r = await fetch(`${API_BASE}/solicitudes`, { headers: await cabecerasAuthAsync() })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as SolicitudBackend[]
     return data.map(aSolicitud)

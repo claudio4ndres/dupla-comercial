@@ -437,6 +437,14 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
                 tareas={tareas}
                 onVolver={() => irA('propuesta')}
                 solicitudId={solicitudActual?.id}
+                onExportarExcel={
+                  solicitudActual
+                    ? () => void descargarCotizacionExcel(solicitudActual.id, 'cliente')
+                    : undefined
+                }
+                onExportarPpt={
+                  solicitudActual ? () => void descargarCotizacionPpt(solicitudActual.id) : undefined
+                }
               />
             ) : (
               <PantallaVacia mensaje="Aún no hay tareas. Genera una propuesta para que el sistema arme sus tareas." />

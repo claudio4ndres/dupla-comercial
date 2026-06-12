@@ -4,7 +4,7 @@
 // o forma inesperada → null, y el front conserva su empresa actual (no rompe el demo
 // offline), igual que `miembros.ts` / `tareas.ts`.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 import type { Empresa } from '../tipos'
 
 // Base de la API. En dev se apunta con VITE_API_URL; por defecto, el proxy /api.
@@ -24,7 +24,7 @@ interface EmpresaApi {
  */
 export async function obtenerEmpresa(): Promise<Empresa | null> {
   try {
-    const r = await fetch(`${API_BASE}/empresa`, { headers: cabecerasAuth() })
+    const r = await fetch(`${API_BASE}/empresa`, { headers: await cabecerasAuthAsync() })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as Partial<EmpresaApi>
     if (!data || !data.nombre) return null

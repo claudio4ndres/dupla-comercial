@@ -156,4 +156,34 @@ describe('Tareas · conector ClickUp', () => {
       expect(body.asignados['Reclutar 6 promotoras']).toBe('Gabriela Lillo')
     })
   })
+
+  it('los botones PPT/Excel disparan los exports reales (ya no son alert placeholder)', async () => {
+    vi.stubGlobal('fetch', fetchMockClickUp())
+    const onExportarPpt = vi.fn()
+    const onExportarExcel = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <Tareas
+        tareas={TAREAS}
+        onVolver={noop}
+        solicitudId="sol-1"
+        onExportarPpt={onExportarPpt}
+        onExportarExcel={onExportarExcel}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /⤓ PPT/i }))
+    await user.click(screen.getByRole('button', { name: /⤓ Excel/i }))
+
+    expect(onExportarPpt).toHaveBeenCalledOnce()
+    expect(onExportarExcel).toHaveBeenCalledOnce()
+  })
+
+  it('sin handlers de export, los botones PPT/Excel quedan deshabilitados (no parecen funcionales)', () => {
+    vi.stubGlobal('fetch', fetchMockClickUp())
+    render(<Tareas tareas={TAREAS} onVolver={noop} solicitudId="sol-1" />)
+
+    expect(screen.getByRole('button', { name: /⤓ PPT/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /⤓ Excel/i })).toBeDisabled()
+  })
 })

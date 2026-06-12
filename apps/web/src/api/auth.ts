@@ -25,12 +25,25 @@ export function cabecerasAuth(): Record<string, string> {
 }
 
 /**
- * Versión async: resuelve el token desde el almacenamiento persistente. Usar
- * cuando se necesita el token antes de que onAuthStateChange haya disparado
- * (ej: llamadas al montar el componente).
+ * Versión async: resuelve el token con `supabase.auth.getSession()`, que
+ * **auto-refresca** el access_token si está vencido (a diferencia de la versión
+ * síncrona, que lee el token crudo de localStorage y puede estar caducado).
+ *
+ * Esta es la que deben usar TODOS los clientes de API autenticados: tras ~1h el
+ * token expira y, sin refresco, el backend responde 401 y las pantallas (la
+ * bandeja, etc.) quedan vacías en silencio.
+ *
+ * Si `getSession()` no entrega token (p. ej. en tests con jsdom, donde el cliente
+ * de Supabase no tiene una sesión persistida real), cae a la lectura síncrona de
+ * localStorage (`cabecerasAuth`) como respaldo, para no romper el flujo offline.
  */
 export async function cabecerasAuthAsync(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  try {
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    if (token) return { Authorization: `Bearer ${token}` }
+  } catch {
+    // getSession falló (red/almacenamiento): caemos al respaldo síncrono.
+  }
+  return cabecerasAuth()
 }

@@ -6,7 +6,7 @@
 // sin sesión → lista vacía, como hacen `tareas.ts`, `solicitudes.ts` y `recursos.ts`,
 // para no romper el demo offline.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 import type { Miembro } from '../tipos'
 
 // Base de la API. En dev se apunta con VITE_API_URL; por defecto, el proxy /api.
@@ -19,7 +19,7 @@ const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
  */
 export async function listarMiembros(): Promise<Miembro[]> {
   try {
-    const r = await fetch(`${API_BASE}/miembros`, { headers: cabecerasAuth() })
+    const r = await fetch(`${API_BASE}/miembros`, { headers: await cabecerasAuthAsync() })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = await r.json()
     // Defensa: si el backend devolviera algo inesperado, no rompemos el selector.

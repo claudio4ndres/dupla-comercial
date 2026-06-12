@@ -18,7 +18,7 @@
 // El token de ClickUp JAMÁS viaja al frontend (CA5): el backend lo omite del
 // response_model y estos clientes solo mapean proveedor/estado.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 
@@ -50,7 +50,7 @@ export interface ListaClickUp {
  */
 export async function obtenerEstadoClickup(): Promise<EstadoClickup> {
   try {
-    const r = await fetch(`${API_BASE}/clickup/estado`, { headers: cabecerasAuth() })
+    const r = await fetch(`${API_BASE}/clickup/estado`, { headers: await cabecerasAuthAsync() })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as Partial<EstadoClickup>
     return {
@@ -71,7 +71,7 @@ export async function obtenerEstadoClickup(): Promise<EstadoClickup> {
 export async function iniciarConexionClickup(): Promise<string> {
   const r = await fetch(`${API_BASE}/clickup/iniciar`, {
     method: 'POST',
-    headers: cabecerasAuth(),
+    headers: await cabecerasAuthAsync(),
   })
   if (!r.ok) throw new Error(`backend respondió ${r.status}`)
   const data = (await r.json()) as { url: string }
@@ -87,7 +87,7 @@ export async function desconectarClickup(): Promise<void> {
   try {
     await fetch(`${API_BASE}/clickup`, {
       method: 'DELETE',
-      headers: cabecerasAuth(),
+      headers: await cabecerasAuthAsync(),
     })
   } catch {
     // Red caída: no rompemos el flujo de "Cambiar".
@@ -101,7 +101,7 @@ export async function desconectarClickup(): Promise<void> {
  */
 export async function listarListasClickUp(): Promise<ListaClickUp[]> {
   try {
-    const r = await fetch(`${API_BASE}/clickup/listas`, { headers: cabecerasAuth() })
+    const r = await fetch(`${API_BASE}/clickup/listas`, { headers: await cabecerasAuthAsync() })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = await r.json()
     // Defensa: si el backend devolviera algo inesperado, no rompemos el selector.
@@ -131,7 +131,7 @@ export async function enviarTareasAClickUp(
       method: 'POST',
       // Content-Type explícito: mandamos JSON con el mapa de asignaciones (el backend
       // lo trata como opcional, así que {} es un cuerpo válido = comportamiento actual).
-      headers: { ...cabecerasAuth(), 'Content-Type': 'application/json' },
+      headers: { ...(await cabecerasAuthAsync()), 'Content-Type': 'application/json' },
       body: JSON.stringify({ asignados }),
     })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)

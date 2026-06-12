@@ -12,9 +12,14 @@ interface Props {
   onVolver: () => void
   /** Solicitud cuya propuesta se envía a ClickUp (sus tareas). */
   solicitudId?: string
+  /** Descarga la cotización como .xlsx (vista cliente). Mismo export que la pantalla
+   * Propuesta; lo cablea App.tsx con la solicitud en contexto. */
+  onExportarExcel?: () => void
+  /** Descarga la propuesta como un DECK .pptx (vista cliente). Igual que Propuesta. */
+  onExportarPpt?: () => void
 }
 
-export function Tareas({ tareas, onVolver, solicitudId }: Props) {
+export function Tareas({ tareas, onVolver, solicitudId, onExportarExcel, onExportarPpt }: Props) {
   // Listas reales del ClickUp del usuario (para el selector de destino). Sin token,
   // el backend devuelve [] → mostramos el aviso "Conecta ClickUp".
   const [listas, setListas] = useState<ListaClickUp[]>([])
@@ -168,10 +173,10 @@ export function Tareas({ tareas, onVolver, solicitudId }: Props) {
           <button className="btn primary" onClick={enviar} disabled={!puedeEnviar}>
             {enviando ? 'Enviando…' : '↗ Enviar a ClickUp'}
           </button>
-          <button className="btn ghost" onClick={() => alert('Exportar a PPT')}>
+          <button className="btn ghost" onClick={onExportarPpt} disabled={!onExportarPpt}>
             ⤓ PPT
           </button>
-          <button className="btn ghost" onClick={() => alert('Exportar a Excel')}>
+          <button className="btn ghost" onClick={onExportarExcel} disabled={!onExportarExcel}>
             ⤓ Excel
           </button>
         </div>
@@ -186,9 +191,8 @@ export function Tareas({ tareas, onVolver, solicitudId }: Props) {
         <div className="note">
           <span>◆</span>
           <div>
-            Cada empresa (Capsulab, Espiga, etc.) tiene su propio espacio aislado: sus correos, conversaciones,
-            propuestas y conexiones a Drive/ClickUp/Gmail. La arquitectura multi-tenant permite vender el mismo
-            producto a varios clientes.
+            Cada empresa tiene su propio espacio aislado: sus correos, conversaciones, propuestas y conexiones a
+            Drive/ClickUp/Gmail. La arquitectura multi-tenant permite vender el mismo producto a varios clientes.
           </div>
         </div>
       </div>

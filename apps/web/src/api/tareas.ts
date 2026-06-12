@@ -6,7 +6,7 @@
 // vencimiento → plazo, nulos → string vacío). Ante error o sin sesión → lista
 // vacía, como hacen `solicitudes.ts` y `recursos.ts`.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 import type { Tarea } from '../tipos'
 
 // Base de la API. En dev se apunta con VITE_API_URL; por defecto, el proxy /api.
@@ -35,7 +35,7 @@ function aTarea(t: TareaBackend): Tarea {
  */
 export async function listarTareas(): Promise<Tarea[]> {
   try {
-    const r = await fetch(`${API_BASE}/tareas`, { headers: cabecerasAuth() })
+    const r = await fetch(`${API_BASE}/tareas`, { headers: await cabecerasAuthAsync() })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as TareaBackend[]
     return data.map(aTarea)

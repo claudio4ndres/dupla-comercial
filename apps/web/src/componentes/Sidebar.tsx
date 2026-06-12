@@ -98,7 +98,27 @@ export function Sidebar({
             </div>
           )
         })}
-        <div className="ws-item add">＋ Nueva empresa</div>
+        {/* Alta de empresa: aún no hay flujo de onboarding self-service, así que el
+            control va DESHABILITADO (no debe parecer funcional). Se habilitará cuando
+            exista el alta de empresa. */}
+        <button
+          type="button"
+          className="ws-item add"
+          disabled
+          title="Próximamente"
+          style={{
+            width: '100%',
+            textAlign: 'left',
+            background: 'transparent',
+            border: 'none',
+            font: 'inherit',
+            color: 'inherit',
+            opacity: 0.5,
+            cursor: 'not-allowed',
+          }}
+        >
+          ＋ Nueva empresa
+        </button>
       </div>
 
       <div className="nav-label">Operación</div>

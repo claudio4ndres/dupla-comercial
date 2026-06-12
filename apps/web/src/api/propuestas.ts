@@ -6,7 +6,7 @@
 // hace `solicitudes.ts`. Si el backend no tiene propuesta (404) o cae, devolvemos
 // `null` para que la UI use su fallback (la demo no se rompe).
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 import type { Componente, Tarea, TipoConfirmado } from '../tipos'
 
 // Base de la API. En dev se apunta con VITE_API_URL; por defecto, el proxy /api.
@@ -100,7 +100,7 @@ function aTarea(t: TareaBackend): Tarea {
 export async function obtenerPropuesta(solicitudId: string): Promise<PropuestaResuelta | null> {
   try {
     const r = await fetch(`${API_BASE}/solicitudes/${solicitudId}/propuesta`, {
-      headers: cabecerasAuth(),
+      headers: await cabecerasAuthAsync(),
     })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as PropuestaBackend
@@ -128,7 +128,7 @@ export async function guardarPropuesta(
   try {
     const r = await fetch(`${API_BASE}/solicitudes/${solicitudId}/propuesta`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...cabecerasAuth() },
+      headers: { 'Content-Type': 'application/json', ...(await cabecerasAuthAsync()) },
       body: JSON.stringify({
         tipo,
         componentes: componentes.map((c) => ({
@@ -166,7 +166,7 @@ export async function guardarPropuesta(
  */
 export async function listarPropuestas(): Promise<PropuestaResumen[]> {
   try {
-    const r = await fetch(`${API_BASE}/propuestas`, { headers: cabecerasAuth() })
+    const r = await fetch(`${API_BASE}/propuestas`, { headers: await cabecerasAuthAsync() })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as PropuestaResumenBackend[]
     return data.map(aPropuestaResumen)

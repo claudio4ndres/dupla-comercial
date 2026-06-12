@@ -5,7 +5,7 @@
 // consentimiento" para iniciar el OAuth. Nunca ve el `token_ref` (CA5): el
 // backend lo omite de la respuesta.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 import type { ProveedorCorreo } from '../tipos'
 
 // Base de la API. En dev se apunta con VITE_API_URL; por defecto, el proxy /api.
@@ -32,7 +32,7 @@ export const ESTADO_DESCONECTADO: EstadoCorreo = {
 export async function obtenerEstadoCorreo(): Promise<EstadoCorreo> {
   try {
     const r = await fetch(`${API_BASE}/integraciones/correo`, {
-      headers: cabecerasAuth(),
+      headers: await cabecerasAuthAsync(),
     })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as Partial<EstadoCorreo>
@@ -55,7 +55,7 @@ export async function obtenerEstadoCorreo(): Promise<EstadoCorreo> {
 export async function iniciarConexionGmail(): Promise<string> {
   const r = await fetch(`${API_BASE}/integraciones/correo/gmail/iniciar`, {
     method: 'POST',
-    headers: cabecerasAuth(),
+    headers: await cabecerasAuthAsync(),
   })
   if (!r.ok) throw new Error(`backend respondió ${r.status}`)
   const data = (await r.json()) as { url: string }
@@ -66,6 +66,6 @@ export async function iniciarConexionGmail(): Promise<string> {
 export async function desconectarCorreo(): Promise<void> {
   await fetch(`${API_BASE}/integraciones/correo`, {
     method: 'DELETE',
-    headers: cabecerasAuth(),
+    headers: await cabecerasAuthAsync(),
   })
 }

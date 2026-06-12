@@ -5,7 +5,7 @@
 // así la conversación sobrevive a un refresh / re-entrada. Si no hay hilo o el backend
 // cae, devuelve [] y el chat parte desde el saludo de Javo.
 
-import { cabecerasAuth } from './auth'
+import { cabecerasAuthAsync } from './auth'
 import type { Mensaje } from '../tipos'
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
@@ -14,7 +14,7 @@ const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 export async function obtenerHistorialConversacion(solicitudId: string): Promise<Mensaje[]> {
   try {
     const r = await fetch(`${API_BASE}/conversaciones/${solicitudId}`, {
-      headers: cabecerasAuth(),
+      headers: await cabecerasAuthAsync(),
     })
     if (!r.ok) throw new Error(`backend respondió ${r.status}`)
     const data = (await r.json()) as { rol: string; contenido: string }[]
