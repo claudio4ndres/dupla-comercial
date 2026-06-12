@@ -6,6 +6,16 @@ from pydantic import BaseModel
 TipoSolicitud = Literal["tipo_1", "tipo_2"]
 
 
+class EmpresaActual(BaseModel):
+    """La empresa (tenant) del usuario autenticado, para el header/branding del front.
+    Reemplaza el mock: el nombre y el color salen del tenant REAL (GET /empresa)."""
+
+    id: str
+    nombre: str
+    color_marca: str
+    plan: str
+
+
 class ResultadoClasificacion(BaseModel):
     """Resultado de clasificar y resumir una solicitud."""
 

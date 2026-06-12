@@ -12,6 +12,8 @@ from uuid import UUID
 
 import httpx
 
+from app.esquemas import EmpresaActual
+
 
 class ResolvedorEmpresaSupabase:
     """Resuelve `empresa_id` a partir del `auth.uid` del usuario contra PostgREST."""
@@ -50,3 +52,28 @@ class ResolvedorEmpresaSupabase:
         if not filas:
             return None
         return UUID(filas[0]["empresa_id"])
+
+    async def datos_de(self, empresa_id: UUID) -> EmpresaActual | None:
+        """Datos de la empresa (nombre, color de marca, plan) para el header del front,
+        o None si no existe. El `empresa_id` ya viene resuelto del JWT del usuario
+        (obtener_empresa_actual), así que leerlo por service role no cruza tenants."""
+        headers = {
+            "apikey": self._key,
+            "Authorization": f"Bearer {self._key}",  # service role: salta la RLS
+        }
+        resp = await self._peticion(
+            "GET",
+            f"/empresas?id=eq.{empresa_id}&select=id,nombre,color_marca,plan&limit=1",
+            headers=headers,
+        )
+        resp.raise_for_status()
+        filas = resp.json()
+        if not filas:
+            return None
+        fila = filas[0]
+        return EmpresaActual(
+            id=str(fila["id"]),
+            nombre=fila["nombre"],
+            color_marca=fila["color_marca"],
+            plan=fila["plan"],
+        )

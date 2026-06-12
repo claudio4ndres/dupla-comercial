@@ -18,6 +18,7 @@ import {
   type EstadoCorreo,
 } from './api/integraciones'
 import { obtenerSolicitudes } from './api/solicitudes'
+import { obtenerEmpresa } from './api/empresa'
 import {
   guardarPropuesta,
   listarPropuestas,
@@ -110,6 +111,19 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     raiz.style.setProperty('--brand', empresa.color)
     raiz.style.setProperty('--brand-soft', empresa.color + '22')
   }, [empresa])
+
+  // El header/branding (nombre, color) sale del tenant REAL del usuario, no del mock:
+  // al haber sesión se pide la empresa al backend y se reemplaza el placeholder.
+  useEffect(() => {
+    if (!sesion) return
+    let activo = true
+    obtenerEmpresa().then((e) => {
+      if (activo && e) setEmpresa(e)
+    })
+    return () => {
+      activo = false
+    }
+  }, [sesion])
 
   // Carga el estado real de la bandeja desde el backend (T13) y lo recarga al
   // cambiar de empresa (cada tenant tiene su propia conexión).
