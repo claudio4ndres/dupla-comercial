@@ -48,6 +48,52 @@ insert into usuarios (id, empresa_id, correo) values
    '00000000-0000-0000-0000-0000000000c1',
    'javier@capsulab.cl');
 
+-- ── Empresa operadora RukkumansLabs (operador de la herramienta) ──────
+-- RukkumansLabs (nosotros) OPERA la app; Capsulab es el CLIENTE piloto. Son
+-- tenants distintos: su aislamiento lo garantiza la RLS (probado en
+-- supabase/tests/rls_rukkumanslabs.test.sql). El operador arranca con su espacio
+-- VACÍO: sin solicitudes, propuestas, tareas, miembros ni integraciones.
+--
+-- Convención de UUIDs (aclaración #2 de la spec 008, NO inventar otros):
+--   · EMPRESAS en letras distintas: Capsulab = …c1, RukkumansLabs = …d1.
+--   · auth.users en la serie `a`: Javier = …a1, admin local RukkumansLabs = …a2.
+-- Así ningún literal cumple dos papeles (…a1 es SOLO el auth.users de Javier).
+insert into empresas (id, nombre, color_marca, plan) values
+  ('00000000-0000-0000-0000-0000000000d1', 'RukkumansLabs', '#F04E37', 'operador');
+
+-- Puente de auth LOCAL para la demo (igual que el de Javier): cuenta y clave de
+-- JUGUETE, solo para que signInWithPassword funcione en dev. NO es la credencial
+-- real de prod (esa la crea el humano en el Supabase Auth de prod; el UID local
+-- …a2 y el UID real de prod no tienen por qué coincidir, y no importa).
+-- Contraseña local del operador: clave-dev
+insert into auth.users (
+  instance_id, id, aud, role, email,
+  encrypted_password,
+  email_confirmed_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  created_at, updated_at,
+  -- GoTrue NO soporta NULL en sus columnas de token (rompe el login con un 500
+  -- "converting NULL to string"); van en '' (vacío).
+  confirmation_token, recovery_token, email_change_token_new, email_change,
+  email_change_token_current, phone_change, phone_change_token, reauthentication_token
+) values (
+  '00000000-0000-0000-0000-000000000000',
+  '00000000-0000-0000-0000-0000000000a2',
+  'authenticated', 'authenticated', 'cafigueroa@gmail.com',
+  crypt('clave-dev', gen_salt('bf')),
+  now(),
+  '{"provider":"email","providers":["email"]}',
+  '{}',
+  now(), now(),
+  '', '', '', '', '', '', '', ''
+);
+
+insert into usuarios (id, empresa_id, correo, rol) values
+  ('00000000-0000-0000-0000-0000000000a2',
+   '00000000-0000-0000-0000-0000000000d1',
+   'cafigueroa@gmail.com', 'admin');
+
 -- ── Bandeja conectada (Gmail) ─────────────────────────────────────────
 -- Deja la bandeja en estado "conectado" para la demo, sin pasar por el OAuth en
 -- vivo (frágil en escenario). El `token_ref` apunta al refresh token REAL en el
