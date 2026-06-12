@@ -165,11 +165,18 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
       return
     }
     let activo = true
-    obtenerSolicitudes().then((s) => {
-      if (activo) setSolicitudes(s)
-    })
+    const cargar = () =>
+      obtenerSolicitudes().then((s) => {
+        if (activo) setSolicitudes(s)
+      })
+    cargar() // carga inmediata al entrar a la bandeja
+    // Auto-refresh: la bandeja se actualiza SOLA cada 20s, para que los correos que
+    // el poller va ingiriendo aparezcan sin recargar a mano — la gracia del producto
+    // (Javo "ve" los correos entrar). Se limpia al salir de la bandeja.
+    const intervalo = setInterval(cargar, 20000)
     return () => {
       activo = false
+      clearInterval(intervalo)
     }
   }, [empresa, estadoCorreo.proveedor, pantalla])
 

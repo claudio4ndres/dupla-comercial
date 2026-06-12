@@ -80,6 +80,9 @@ describe('App (arnés)', () => {
   })
 
   afterEach(() => {
+    // Por si un test que usó timers falsos murió antes de restaurarlos: evita que
+    // se filtren al resto de la suite.
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -180,6 +183,49 @@ describe('App (arnés)', () => {
     // Las solicitudes del backend aparecen en la bandeja (llegada asíncrona).
     expect(await screen.findByText(/Carolina Herrera/i)).toBeInTheDocument()
     expect(screen.getByText(/Metro de Santiago/i)).toBeInTheDocument()
+  })
+
+  it('con la bandeja conectada, refresca SOLA las solicitudes cada 20s (auto-refresh, sin recargar)', async () => {
+    // La gracia del producto: la bandeja se actualiza sola cada 20s para que los
+    // correos que el poller va ingiriendo aparezcan sin recargar a mano. Aquí
+    // contamos las llamadas a GET /solicitudes y verificamos que tras ~20s sube.
+    // Timers falsos ACTIVOS antes del render: así el setInterval(cargar, 20000) que
+    // arma el efecto de la bandeja queda bajo control de los timers falsos y podemos
+    // "saltar" 20s sin esperar de verdad. `shouldAdvanceTime` deja que el reloj
+    // avance también en tiempo real, para que el polling interno de findBy/waitFor
+    // (login + onboarding) no se cuelgue. `advanceTimers` ata userEvent al reloj falso.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    let llamadasSolicitudes = 0
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      if (u.includes('/solicitudes')) {
+        llamadasSolicitudes += 1
+        return Promise.resolve(respuesta([]))
+      }
+      // GET /integraciones/correo → bandeja conectada a Gmail.
+      return Promise.resolve(respuesta({ proveedor: 'gmail', estado: 'conectado', casilla: 'javier@capsulab.cl' }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      render(<App />)
+      await entrarABandeja(user)
+
+      // 1ª carga al entrar a la bandeja (carga inmediata del efecto).
+      await waitFor(() => expect(llamadasSolicitudes).toBeGreaterThanOrEqual(1))
+      const tras1raCarga = llamadasSolicitudes
+
+      // Avanza ~20s: el setInterval(cargar, 20000) dispara una nueva carga.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20000)
+      })
+
+      // La bandeja RE-pidió /solicitudes sola (el contador subió), sin recargar.
+      expect(llamadasSolicitudes).toBeGreaterThan(tras1raCarga)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('con la bandeja en "reconectar", igual muestra las solicitudes ya ingeridas y el banner de reconectar', async () => {
