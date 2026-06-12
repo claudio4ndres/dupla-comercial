@@ -51,4 +51,21 @@ describe('PropuestasLista', () => {
     render(<PropuestasLista propuestas={[]} onAbrir={noop} />)
     expect(screen.getByText(/Aún no hay propuestas/i)).toBeInTheDocument()
   })
+
+  it('mientras carga (sin datos aún), muestra "Cargando…" en vez del vacío', () => {
+    render(<PropuestasLista propuestas={[]} onAbrir={noop} cargando />)
+    expect(screen.getByText(/Cargando propuestas/i)).toBeInTheDocument()
+    // No debe leerse como "no hay propuestas" mientras está cargando.
+    expect(screen.queryByText(/Aún no hay propuestas/i)).not.toBeInTheDocument()
+  })
+
+  it('si la carga falla, muestra un banner de error con "Reintentar"', async () => {
+    const user = userEvent.setup()
+    const onReintentar = vi.fn()
+    render(<PropuestasLista propuestas={[]} onAbrir={noop} error onReintentar={onReintentar} />)
+    expect(screen.getByText(/No se pudieron cargar las propuestas/i)).toBeInTheDocument()
+    // No es un vacío mudo: ofrece reintentar.
+    await user.click(screen.getByRole('button', { name: /reintentar/i }))
+    expect(onReintentar).toHaveBeenCalledOnce()
+  })
 })

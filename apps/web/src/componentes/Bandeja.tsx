@@ -1,5 +1,6 @@
 import { ETIQUETA_TIPO, NOMBRE_PROVEEDOR, type ProveedorCorreo, type Solicitud } from '../tipos'
 import { PROVEEDORES_CORREO } from '../datosMock'
+import { BannerError, CargandoLista } from './EstadoLista'
 
 interface Props {
   solicitudes: Solicitud[]
@@ -14,6 +15,12 @@ interface Props {
   estado?: 'conectado' | 'reconectar' | null
   onConectar: (proveedor: ProveedorCorreo) => void
   onDesconectar: () => void
+  /** `true` mientras llega la PRIMERA respuesta del backend (muestra "Cargando…"). */
+  cargando?: boolean
+  /** `true` si la última carga falló (muestra el banner "No se pudo cargar"). */
+  error?: boolean
+  /** Reintenta la carga de la bandeja (botón del banner de error). */
+  onReintentar?: () => void
 }
 
 /** Color de la franja izquierda según el tipo sugerido. */
@@ -23,7 +30,17 @@ function colorStripe(tipo: Solicitud['tipo']): string {
   return 'var(--brand)'
 }
 
-export function Bandeja({ solicitudes, onAbrir, proveedor, estado, onConectar, onDesconectar }: Props) {
+export function Bandeja({
+  solicitudes,
+  onAbrir,
+  proveedor,
+  estado,
+  onConectar,
+  onDesconectar,
+  cargando = false,
+  error = false,
+  onReintentar,
+}: Props) {
   return (
     <section className="screen">
       <div className="wrap">
@@ -73,20 +90,29 @@ export function Bandeja({ solicitudes, onAbrir, proveedor, estado, onConectar, o
           </div>
         )}
 
-        <div>
-          {solicitudes.map((s) => (
-            <div key={s.id} className="mail" onClick={() => onAbrir(s)}>
-              <div className="stripe" style={{ background: colorStripe(s.tipo) }} />
-              <div className="row1">
-                <span className="from">{s.remitente}</span>
-                <span className={'badge ' + s.tipo}>{ETIQUETA_TIPO[s.tipo]}</span>
-                <span className="time">{s.tiempo}</span>
+        {/* Estados de carga/error: solo cuando hay proveedor (si no, manda el bloque
+            "Conecta tu bandeja" de arriba). El error tiene prioridad sobre el
+            "Cargando…" para no esconder un fallo tras un spinner perpetuo. */}
+        {proveedor !== null && error ? (
+          <BannerError mensaje="No se pudieron cargar las solicitudes." onReintentar={onReintentar} />
+        ) : proveedor !== null && cargando && solicitudes.length === 0 ? (
+          <CargandoLista mensaje="Cargando solicitudes…" />
+        ) : (
+          <div>
+            {solicitudes.map((s) => (
+              <div key={s.id} className="mail" onClick={() => onAbrir(s)}>
+                <div className="stripe" style={{ background: colorStripe(s.tipo) }} />
+                <div className="row1">
+                  <span className="from">{s.remitente}</span>
+                  <span className={'badge ' + s.tipo}>{ETIQUETA_TIPO[s.tipo]}</span>
+                  <span className="time">{s.tiempo}</span>
+                </div>
+                <div className="subj">{s.asunto}</div>
+                <div className="snip">{s.resumen}</div>
               </div>
-              <div className="subj">{s.asunto}</div>
-              <div className="snip">{s.resumen}</div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   )

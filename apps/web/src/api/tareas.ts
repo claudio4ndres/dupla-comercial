@@ -29,16 +29,25 @@ function aTarea(t: TareaBackend): Tarea {
 }
 
 /**
+ * Lista las tareas de la empresa y PROPAGA el error si el backend no responde.
+ * La usa el caller (App.tsx) que quiere distinguir "vacío real" de "fallo de
+ * carga" para mostrar un banner de reintento.
+ */
+export async function listarTareasOError(): Promise<Tarea[]> {
+  const r = await fetch(`${API_BASE}/tareas`, { headers: await cabecerasAuthAsync() })
+  if (!r.ok) throw new Error(`backend respondió ${r.status}`)
+  const data = (await r.json()) as TareaBackend[]
+  return data.map(aTarea)
+}
+
+/**
  * Lista las tareas de la empresa para la pantalla "Tareas" del menú. Si el
  * backend no responde (caído o sin sesión), cae a lista vacía para no romper
  * el demo (mismo manejo de errores que `obtenerSolicitudes`).
  */
 export async function listarTareas(): Promise<Tarea[]> {
   try {
-    const r = await fetch(`${API_BASE}/tareas`, { headers: await cabecerasAuthAsync() })
-    if (!r.ok) throw new Error(`backend respondió ${r.status}`)
-    const data = (await r.json()) as TareaBackend[]
-    return data.map(aTarea)
+    return await listarTareasOError()
   } catch {
     return []
   }

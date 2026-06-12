@@ -269,6 +269,48 @@ describe('App (arnés)', () => {
     expect(screen.getByRole('button', { name: /Reconectar/i })).toBeInTheDocument()
   })
 
+  it('si la carga de la bandeja falla, muestra un banner de error y "Reintentar" recarga', async () => {
+    const user = userEvent.setup()
+    // Bandeja conectada, pero el 1er GET /solicitudes falla (backend caído).
+    // El front NO debe mostrar un vacío mudo: muestra un banner con "Reintentar".
+    // Al reintentar, el 2º GET ya responde y aparecen las solicitudes.
+    let intentos = 0
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      if (u.includes('/solicitudes')) {
+        intentos += 1
+        if (intentos === 1) return Promise.resolve(respuesta(null, false, 500))
+        return Promise.resolve(
+          respuesta([
+            {
+              id: 's1',
+              remitente: 'Carolina Herrera',
+              correo_origen: 'eventos@212.cl',
+              asunto: '212 VIP — activación de fragancia',
+              cuerpo: 'Necesitamos cotizar…',
+              resumen: 'Activación 212 VIP en retail',
+              tipo: 'tipo_1',
+              estado: 'nueva',
+            },
+          ]),
+        )
+      }
+      return Promise.resolve(respuesta({ proveedor: 'gmail', estado: 'conectado', casilla: 'javier@capsulab.cl' }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await entrarABandeja(user)
+
+    // El fallo se ve como banner, no como vacío silencioso.
+    expect(await screen.findByText(/No se pudieron cargar las solicitudes/i)).toBeInTheDocument()
+
+    // Reintentar dispara una nueva carga, que ahora trae las solicitudes.
+    await user.click(screen.getByRole('button', { name: /reintentar/i }))
+    expect(await screen.findByText(/Carolina Herrera/i)).toBeInTheDocument()
+    expect(screen.queryByText(/No se pudieron cargar las solicitudes/i)).not.toBeInTheDocument()
+  })
+
   it('en la bandeja, ofrece conectar un proveedor de correo', async () => {
     const user = userEvent.setup()
     render(<App />)

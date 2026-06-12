@@ -9,6 +9,7 @@ import { Propuesta } from './componentes/Propuesta'
 import { PropuestasLista } from './componentes/PropuestasLista'
 import { Tareas } from './componentes/Tareas'
 import { Login } from './componentes/Login'
+import { BannerError, CargandoLista } from './componentes/EstadoLista'
 import { conversarConJavo } from './api/javo'
 import {
   desconectarCorreo,
@@ -17,15 +18,15 @@ import {
   obtenerEstadoCorreo,
   type EstadoCorreo,
 } from './api/integraciones'
-import { obtenerSolicitudes } from './api/solicitudes'
+import { obtenerSolicitudesOError } from './api/solicitudes'
 import { obtenerEmpresa } from './api/empresa'
 import {
   guardarPropuesta,
-  listarPropuestas,
+  listarPropuestasOError,
   obtenerPropuesta,
   type PropuestaResumen,
 } from './api/propuestas'
-import { listarTareas } from './api/tareas'
+import { listarTareasOError } from './api/tareas'
 import { descargarCotizacionExcel, descargarCotizacionPpt } from './api/exportaciones'
 import { obtenerRecursosDrive } from './api/recursos'
 import { obtenerHistorialConversacion } from './api/conversaciones'
@@ -90,14 +91,31 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
   const [estadoCorreo, setEstadoCorreo] = useState<EstadoCorreo>(ESTADO_DESCONECTADO)
   // Solicitudes REALES de la empresa (las que el poller ingirió desde el correo).
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([])
+  // Estado de carga/error de la bandeja: `cargando` mientras llega la PRIMERA
+  // respuesta (para no mostrar el vacío como si "no hubiera correos"); `error` si
+  // el GET falla (para avisar con un banner de reintento en vez de un vacío mudo).
+  const [cargandoSolicitudes, setCargandoSolicitudes] = useState(true)
+  const [errorSolicitudes, setErrorSolicitudes] = useState(false)
   // Propuestas REALES de la empresa (lista del menú "Propuestas").
   const [propuestas, setPropuestas] = useState<PropuestaResumen[]>([])
+  const [cargandoPropuestas, setCargandoPropuestas] = useState(true)
+  const [errorPropuestas, setErrorPropuestas] = useState(false)
+  // Nonces de reintento: al subirlos, el efecto de carga correspondiente vuelve a
+  // correr (es la forma de "Reintentar" desde el banner de error sin duplicar la
+  // lógica de fetch). Cada lista tiene el suyo.
+  const [reintentoSolicitudes, setReintentoSolicitudes] = useState(0)
+  const [reintentoPropuestas, setReintentoPropuestas] = useState(0)
+  const [reintentoTareas, setReintentoTareas] = useState(0)
   const [solicitudActual, setSolicitudActual] = useState<Solicitud | null>(null)
   const [tipo, setTipo] = useState<TipoConfirmado>('t1')
   const [mensajes, setMensajes] = useState<Mensaje[]>([])
   const [componentes, setComponentes] = useState<Componente[]>([])
   // Tareas de la cotización (vienen del backend junto con los componentes).
   const [tareas, setTareas] = useState<Tarea[]>([])
+  // Carga/error de la LISTA global de tareas (menú "Tareas"). No aplica cuando
+  // las tareas vienen del flujo de una propuesta (ya están en estado).
+  const [cargandoTareas, setCargandoTareas] = useState(true)
+  const [errorTareas, setErrorTareas] = useState(false)
   // Fuentes que Javo citó en la conversación (recursos del Drive / web) — 005.
   const [fuentes, setFuentes] = useState<Fuente[]>([])
   // Recursos del Drive de la empresa (panel del chat): reales desde el catálogo.
@@ -165,10 +183,30 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
       return
     }
     let activo = true
-    const cargar = () =>
-      obtenerSolicitudes().then((s) => {
-        if (activo) setSolicitudes(s)
-      })
+    // Solo la PRIMERA carga muestra "Cargando…"; el auto-refresh de 20s es
+    // silencioso (no debe parpadear el spinner cada vez que reconsulta).
+    let esPrimera = true
+    const cargar = () => {
+      if (esPrimera) {
+        setCargandoSolicitudes(true)
+        setErrorSolicitudes(false)
+      }
+      return obtenerSolicitudesOError()
+        .then((s) => {
+          if (!activo) return
+          setSolicitudes(s)
+          setErrorSolicitudes(false)
+        })
+        .catch(() => {
+          // El cliente normalmente traga el error; aquí usamos la variante que lo
+          // propaga para distinguir "vacío real" de "fallo" y avisar con el banner.
+          if (activo) setErrorSolicitudes(true)
+        })
+        .finally(() => {
+          if (activo) setCargandoSolicitudes(false)
+          esPrimera = false
+        })
+    }
     cargar() // carga inmediata al entrar a la bandeja
     // Auto-refresh: la bandeja se actualiza SOLA cada 20s, para que los correos que
     // el poller va ingiriendo aparezcan sin recargar a mano — la gracia del producto
@@ -178,20 +216,34 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
       activo = false
       clearInterval(intervalo)
     }
-  }, [empresa, estadoCorreo.proveedor, pantalla])
+  }, [empresa, estadoCorreo.proveedor, pantalla, reintentoSolicitudes])
 
   // Carga la lista REAL de propuestas al entrar a la pantalla "Propuestas" del
   // menú (y al cambiar de empresa). Sin sesión/backend, queda vacía (sin mock).
   useEffect(() => {
     if (pantalla !== 'propuestas') return
     let activo = true
-    listarPropuestas().then((p) => {
-      if (activo) setPropuestas(p)
-    })
+    // Marcar "cargando" al iniciar la carga es sincronizar la UI con el fetch que
+    // arranca aquí (no es estado derivado), por eso el disable puntual.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCargandoPropuestas(true)
+    setErrorPropuestas(false)
+    listarPropuestasOError()
+      .then((p) => {
+        if (!activo) return
+        setPropuestas(p)
+        setErrorPropuestas(false)
+      })
+      .catch(() => {
+        if (activo) setErrorPropuestas(true)
+      })
+      .finally(() => {
+        if (activo) setCargandoPropuestas(false)
+      })
     return () => {
       activo = false
     }
-  }, [empresa, pantalla])
+  }, [empresa, pantalla, reintentoPropuestas])
 
   // Carga la lista REAL de tareas al entrar a "Tareas" por el menú SIN tareas en
   // estado. Si se viene del flujo de una propuesta (tareas ya cargadas), se
@@ -199,13 +251,26 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
   useEffect(() => {
     if (pantalla !== 'tareas' || tareas.length > 0) return
     let activo = true
-    listarTareas().then((t) => {
-      if (activo) setTareas(t)
-    })
+    // Igual que en propuestas: sincronizar "cargando" con el fetch que arranca aquí.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCargandoTareas(true)
+    setErrorTareas(false)
+    listarTareasOError()
+      .then((t) => {
+        if (!activo) return
+        setTareas(t)
+        setErrorTareas(false)
+      })
+      .catch(() => {
+        if (activo) setErrorTareas(true)
+      })
+      .finally(() => {
+        if (activo) setCargandoTareas(false)
+      })
     return () => {
       activo = false
     }
-  }, [empresa, pantalla, tareas.length])
+  }, [empresa, pantalla, tareas.length, reintentoTareas])
 
   function irA(p: Pantalla) {
     setPantalla(p)
@@ -381,6 +446,9 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
               estado={estadoCorreo.estado}
               onConectar={conectarProveedor}
               onDesconectar={desconectarProveedor}
+              cargando={cargandoSolicitudes}
+              error={errorSolicitudes}
+              onReintentar={() => setReintentoSolicitudes((n) => n + 1)}
             />
           )}
 
@@ -409,7 +477,13 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
             ))}
 
           {pantalla === 'propuestas' && (
-            <PropuestasLista propuestas={propuestas} onAbrir={abrirPropuestaDesdeLista} />
+            <PropuestasLista
+              propuestas={propuestas}
+              onAbrir={abrirPropuestaDesdeLista}
+              cargando={cargandoPropuestas}
+              error={errorPropuestas}
+              onReintentar={() => setReintentoPropuestas((n) => n + 1)}
+            />
           )}
 
           {pantalla === 'propuesta' &&
@@ -446,6 +520,21 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
                   solicitudActual ? () => void descargarCotizacionPpt(solicitudActual.id) : undefined
                 }
               />
+            ) : errorTareas ? (
+              <section className="screen">
+                <div className="wrap">
+                  <BannerError
+                    mensaje="No se pudieron cargar las tareas."
+                    onReintentar={() => setReintentoTareas((n) => n + 1)}
+                  />
+                </div>
+              </section>
+            ) : cargandoTareas ? (
+              <section className="screen">
+                <div className="wrap">
+                  <CargandoLista mensaje="Cargando tareas…" />
+                </div>
+              </section>
             ) : (
               <PantallaVacia mensaje="Aún no hay tareas. Genera una propuesta para que el sistema arme sus tareas." />
             ))}

@@ -57,15 +57,25 @@ function aSolicitud(s: SolicitudBackend): Solicitud {
 }
 
 /**
+ * Lee las solicitudes reales de la empresa desde el backend y PROPAGA el error
+ * si el backend no responde. La usa el caller (App.tsx) que quiere distinguir
+ * "vacío real" de "fallo de carga" para mostrar un banner de reintento. El resto
+ * del front usa `obtenerSolicitudes`, que traga el error y cae a lista vacía.
+ */
+export async function obtenerSolicitudesOError(): Promise<Solicitud[]> {
+  const r = await fetch(`${API_BASE}/solicitudes`, { headers: await cabecerasAuthAsync() })
+  if (!r.ok) throw new Error(`backend respondió ${r.status}`)
+  const data = (await r.json()) as SolicitudBackend[]
+  return data.map(aSolicitud)
+}
+
+/**
  * Lee las solicitudes reales de la empresa desde el backend. Si el backend no
  * responde (caído o aún sin cablear), cae a lista vacía para no romper el demo.
  */
 export async function obtenerSolicitudes(): Promise<Solicitud[]> {
   try {
-    const r = await fetch(`${API_BASE}/solicitudes`, { headers: await cabecerasAuthAsync() })
-    if (!r.ok) throw new Error(`backend respondió ${r.status}`)
-    const data = (await r.json()) as SolicitudBackend[]
-    return data.map(aSolicitud)
+    return await obtenerSolicitudesOError()
   } catch {
     return []
   }

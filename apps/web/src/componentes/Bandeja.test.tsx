@@ -107,6 +107,41 @@ describe('Bandeja', () => {
     expect(screen.getByText('Gmail')).toBeInTheDocument()
   })
 
+  it('mientras carga (conectada, sin solicitudes aún), muestra "Cargando…" en vez del vacío', () => {
+    render(
+      <Bandeja
+        solicitudes={[]}
+        onAbrir={noop}
+        proveedor="gmail"
+        estado="conectado"
+        onConectar={noop}
+        onDesconectar={noop}
+        cargando
+      />,
+    )
+    expect(screen.getByText(/Cargando solicitudes/i)).toBeInTheDocument()
+  })
+
+  it('si la carga falla (conectada), muestra un banner de error con "Reintentar"', async () => {
+    const user = userEvent.setup()
+    const onReintentar = vi.fn()
+    render(
+      <Bandeja
+        solicitudes={[]}
+        onAbrir={noop}
+        proveedor="gmail"
+        estado="conectado"
+        onConectar={noop}
+        onDesconectar={noop}
+        error
+        onReintentar={onReintentar}
+      />,
+    )
+    expect(screen.getByText(/No se pudieron cargar las solicitudes/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /reintentar/i }))
+    expect(onReintentar).toHaveBeenCalledOnce()
+  })
+
   it('con la integración caída (estado "reconectar"), muestra el aviso de reconectar (CA7)', async () => {
     const user = userEvent.setup()
     const onConectar = vi.fn()

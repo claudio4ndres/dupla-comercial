@@ -160,16 +160,25 @@ export async function guardarPropuesta(
 }
 
 /**
+ * Lista las propuestas de la empresa y PROPAGA el error si el backend no
+ * responde. La usa el caller (App.tsx) que quiere distinguir "vacío real" de
+ * "fallo de carga" para mostrar un banner de reintento.
+ */
+export async function listarPropuestasOError(): Promise<PropuestaResumen[]> {
+  const r = await fetch(`${API_BASE}/propuestas`, { headers: await cabecerasAuthAsync() })
+  if (!r.ok) throw new Error(`backend respondió ${r.status}`)
+  const data = (await r.json()) as PropuestaResumenBackend[]
+  return data.map(aPropuestaResumen)
+}
+
+/**
  * Lista las propuestas de la empresa para la pantalla "Propuestas" del menú.
  * Si el backend no responde (caído o sin sesión), cae a lista vacía para no
  * romper el demo (mismo manejo de errores que `obtenerSolicitudes`).
  */
 export async function listarPropuestas(): Promise<PropuestaResumen[]> {
   try {
-    const r = await fetch(`${API_BASE}/propuestas`, { headers: await cabecerasAuthAsync() })
-    if (!r.ok) throw new Error(`backend respondió ${r.status}`)
-    const data = (await r.json()) as PropuestaResumenBackend[]
-    return data.map(aPropuestaResumen)
+    return await listarPropuestasOError()
   } catch {
     return []
   }
