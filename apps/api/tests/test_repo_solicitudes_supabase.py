@@ -132,6 +132,62 @@ async def test_crear_desde_correo_duplicado_devuelve_false():
     assert creada is False
 
 
+async def test_crear_desde_correo_apunta_on_conflict_al_indice_unico():
+    # El bug del 409: `resolution=ignore-duplicates` sólo cubre la PK; el índice
+    # único es PARCIAL y secundario (empresa_id, gmail_msg_id). Sin `on_conflict`
+    # en la URL, PostgREST hace ON CONFLICT contra la PK y un duplicado de ese
+    # índice tira 409. Verificamos que el POST apunta el ON CONFLICT al índice.
+    visto = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        visto["url"] = str(req.url)
+        return httpx.Response(201, json=[{"id": str(uuid4())}])
+
+    await _repo(handler).crear_desde_correo(
+        EMPRESA,
+        MensajeCorreo(
+            gmail_msg_id="msg-1",
+            remitente="Zona Espiga",
+            correo_origen="ventas@zonaespiga.cl",
+            asunto="Sampling",
+            cuerpo="hola",
+        ),
+    )
+
+    assert "on_conflict=empresa_id%2Cgmail_msg_id" in visto["url"] or (
+        "on_conflict=empresa_id,gmail_msg_id" in visto["url"]
+    )
+
+
+async def test_crear_desde_correo_409_es_idempotente_no_lanza_y_devuelve_false():
+    # Defensa en profundidad: aunque Postgres devuelva 409 (índice único violado),
+    # el repo lo trata como "ya ingerido" → NO lanza y devuelve False. Así un correo
+    # repetido jamás sube como excepción al poller (que lo confundía con auth).
+    def handler(req):
+        return httpx.Response(
+            409,
+            json={
+                "code": "23505",
+                "message": (
+                    'duplicate key value violates unique constraint '
+                    '"idx_solicitudes_gmail_msg"'
+                ),
+            },
+        )
+
+    creada = await _repo(handler).crear_desde_correo(
+        EMPRESA,
+        MensajeCorreo(
+            gmail_msg_id="msg-1",
+            remitente="Zona Espiga",
+            correo_origen="ventas@zonaespiga.cl",
+            asunto="Sampling",
+            cuerpo="hola",
+        ),
+    )
+    assert creada is False
+
+
 async def test_listar_manda_jwt_del_usuario_y_mapea_las_filas():
     visto = {}
 

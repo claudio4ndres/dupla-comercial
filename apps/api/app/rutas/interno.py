@@ -19,6 +19,7 @@ from app.dependencias import (
 )
 from app.esquemas import ResumenPoller, ResumenReproceso
 from app.servicios.clasificador import clasificar_solicitud
+from app.servicios.gmail import ErrorAutenticacionGmail
 from app.servicios.ingesta_correo import ingerir_correos_nuevos
 from app.servicios.reprocesar import reprocesar_correos
 
@@ -60,9 +61,10 @@ async def poller_correo(
     solicitudes_creadas = 0
     for integracion in integraciones:
         empresas_procesadas += 1
-        # Defensa en profundidad multi-tenant: una empresa que falle (token roto,
-        # Secret Manager, red…) NO debe tumbar el poll de las demás. Se la marca
-        # 'reconectar' y se sigue. El servicio de ingesta ya absorbe el caso de auth.
+        # Defensa en profundidad multi-tenant: una empresa que falle NO debe tumbar el
+        # poll de las demás. PERO el estado 'reconectar' es SÓLO para fallos de AUTH
+        # (token expirado/revocado): marcarlo por un 409 de BD u otro error de
+        # infraestructura es incorrecto y le pide al usuario reconectar tokens sanos.
         try:
             gmail = fabrica_gmail.crear(integracion)
             resultado = await ingerir_correos_nuevos(
@@ -73,13 +75,25 @@ async def poller_correo(
                 clasificar=clasificar,
             )
             solicitudes_creadas += resultado.creadas
-        except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
-            _LOG.exception(
-                "Poller: la empresa %s falló; se marca 'reconectar' y se sigue.",
+        except ErrorAutenticacionGmail:
+            # Credenciales rotas: el usuario debe reconectar. (Normalmente la ingesta
+            # ya lo absorbe y marca 'reconectar'; esto cubre el caso en que el error
+            # de auth suba por otra vía.)
+            _LOG.warning(
+                "Poller: la empresa %s tiene la sesión de Gmail caída; "
+                "se marca 'reconectar' y se sigue.",
                 integracion.empresa_id,
             )
             await repo_integraciones.marcar_estado(
                 integracion.empresa_id, "reconectar"
+            )
+        except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
+            # Error NO-auth (409 de BD, Secret Manager, red…): se aísla y se sigue,
+            # SIN tocar el estado de la integración (sus credenciales están sanas).
+            _LOG.exception(
+                "Poller: la empresa %s falló por un error NO-auth; se aísla y se "
+                "sigue SIN marcar 'reconectar' (las credenciales están sanas).",
+                integracion.empresa_id,
             )
     return ResumenPoller(
         empresas_procesadas=empresas_procesadas,

@@ -166,9 +166,11 @@ def test_poller_con_credencial_de_servicio_devuelve_200():
 
 
 class _GmailRevienta:
-    """Cliente Gmail que lanza un error NO-auth (p. ej. Secret Manager con un
-    token_ref roto). La ingesta sólo atrapa el de auth, así que este sube al poller,
-    que debe aislarlo (defensa en profundidad multi-tenant)."""
+    """Cliente Gmail que lanza un error NO-auth (p. ej. un 409 de DB que sube desde
+    el repo, o Secret Manager con un token_ref roto). La ingesta sólo atrapa el de
+    auth, así que este sube al poller, que debe aislarlo (no romper a las demás) pero
+    SIN marcar 'reconectar': no es un problema de credenciales (el bug del falso
+    reconectar en prod)."""
 
     async def listar_nuevos(self, cursor):
         raise RuntimeError("Secret Manager: token_ref inusable")
@@ -176,7 +178,7 @@ class _GmailRevienta:
 
 def test_poller_aisla_error_inesperado_y_no_revienta():
     # El caso real del token viejo tras migrar a Secret Manager: una empresa revienta
-    # con un error inesperado → se marca 'reconectar' y se SIGUE con las demás (no 500).
+    # con un error inesperado → se SIGUE con las demás (no 500).
     repo_int = RepositorioIntegracionesEnMemoria(
         [_integracion(EMPRESA_A), _integracion(EMPRESA_B)]
     )
@@ -193,7 +195,57 @@ def test_poller_aisla_error_inesperado_y_no_revienta():
 
     assert r.status_code == 200  # NO 500 aunque A reviente
     assert r.json() == {"empresas_procesadas": 2, "solicitudes_creadas": 1}
+    integ_b = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_B))
+    assert integ_b.estado == "conectado"  # la sana sigue ok
+
+
+def test_poller_error_no_auth_no_marca_reconectar():
+    # El bug REAL: un 409 de DB (o cualquier error que NO sea de auth) NO debe marcar
+    # 'reconectar'. Marcar 'reconectar' por un error de BD es incorrecto y confunde al
+    # usuario, haciéndole reconectar tokens que están sanos. La empresa que falla
+    # queda con su estado intacto ('conectado'); las demás se procesan igual.
+    repo_int = RepositorioIntegracionesEnMemoria(
+        [_integracion(EMPRESA_A), _integracion(EMPRESA_B)]
+    )
+    repo_sol = RepositorioSolicitudesEnMemoria([])
+    fabrica = FabricaClienteGmailFake(
+        {
+            EMPRESA_A: _GmailRevienta(),  # error NO-auth (simula el 409 que sube)
+            EMPRESA_B: ClienteGmailFake([_mensaje("b-1")], nuevo_cursor="cur-B"),
+        }
+    )
+    http = _cliente_http(repo_int, repo_sol, fabrica)
+
+    r = http.post("/interno/poller/correo")
+
+    assert r.status_code == 200
     integ_a = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_A))
     integ_b = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_B))
-    assert integ_a.estado == "reconectar"  # la que reventó
-    assert integ_b.estado == "conectado"  # la sana sigue ok
+    # CLAVE: el error de BD NO toca el estado de la integración de A.
+    assert integ_a.estado == "conectado"  # token sano → NO 'reconectar'
+    assert integ_b.estado == "conectado"
+
+
+def test_poller_error_de_auth_si_marca_reconectar():
+    # El contraejemplo: un error de AUTENTICACIÓN real (refresh token expirado/
+    # revocado) SÍ debe dejar la integración en 'reconectar' para que el usuario la
+    # reconecte. La ingesta ya absorbe este caso; aquí lo verificamos vía el poller.
+    repo_int = RepositorioIntegracionesEnMemoria(
+        [_integracion(EMPRESA_A), _integracion(EMPRESA_B)]
+    )
+    repo_sol = RepositorioSolicitudesEnMemoria([])
+    fabrica = FabricaClienteGmailFake(
+        {
+            EMPRESA_A: ClienteGmailQueFallaAuth(),  # token expirado/revocado
+            EMPRESA_B: ClienteGmailFake([_mensaje("b-1")], nuevo_cursor="cur-B"),
+        }
+    )
+    http = _cliente_http(repo_int, repo_sol, fabrica)
+
+    r = http.post("/interno/poller/correo")
+
+    assert r.status_code == 200
+    integ_a = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_A))
+    integ_b = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_B))
+    assert integ_a.estado == "reconectar"  # auth roto → SÍ 'reconectar'
+    assert integ_b.estado == "conectado"

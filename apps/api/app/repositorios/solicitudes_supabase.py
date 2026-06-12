@@ -141,9 +141,22 @@ class RepositorioSolicitudesSupabase:
         tipo: str = "sin_clasificar",
     ) -> bool:
         """Inserta una solicitud desde un correo, idempotente por el índice único
-        parcial `(empresa_id, gmail_msg_id)`. `resolution=ignore-duplicates` hace
-        que un duplicado no falle y devuelva sin filas → `False`. `resumen`/`tipo`
-        vienen del clasificador (si corrió); si no, queda 'sin_clasificar'."""
+        parcial `(empresa_id, gmail_msg_id)`.
+
+        Idempotencia (el bug del 409 en prod): `resolution=ignore-duplicates` por sí
+        solo arma el `ON CONFLICT` contra la PRIMARY KEY, no contra nuestro índice
+        único PARCIAL secundario. Sin apuntarlo, un correo ya ingerido viola ese
+        índice y PostgREST devuelve **409**. Por eso fijamos `on_conflict=empresa_id,
+        gmail_msg_id` en la URL (apunta el ON CONFLICT al índice correcto → el
+        duplicado se ignora y devuelve sin filas → `False`).
+
+        Cinturón y tirantes: si aun así llega un 409 (carrera, índice ausente en algún
+        ambiente), lo tratamos como "ya ingerido" → devolvemos `False` sin lanzar. Un
+        409 de DB NO es un error de auth; jamás debe subir como excepción al poller,
+        que lo confundía con un token roto y forzaba un 'reconectar' falso.
+
+        `resumen`/`tipo` vienen del clasificador (si corrió); si no, 'sin_clasificar'.
+        """
         fila = {
             "empresa_id": str(empresa_id),
             "gmail_msg_id": mensaje.gmail_msg_id,
@@ -159,12 +172,17 @@ class RepositorioSolicitudesSupabase:
             fila["creado_en"] = mensaje.fecha.isoformat()
         resp = await self._peticion(
             "POST",
-            "/solicitudes",
+            # `on_conflict` apunta el ON CONFLICT al índice único parcial correcto;
+            # sin esto, `ignore-duplicates` sólo cubre la PK y el duplicado tira 409.
+            "/solicitudes?on_conflict=empresa_id,gmail_msg_id",
             headers=self._headers(
                 {"Prefer": "return=representation,resolution=ignore-duplicates"}
             ),
             json=fila,
         )
+        if resp.status_code == 409:
+            # Duplicado: correo ya ingerido. Idempotente → no creada, sin lanzar.
+            return False
         resp.raise_for_status()
         filas = resp.json()
         return bool(filas)
