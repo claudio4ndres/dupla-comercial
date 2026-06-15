@@ -81,7 +81,7 @@ export function Bandeja({
             </button>
           </div>
         ) : (
-          <div className="listening">
+          <div data-testid="bandeja-estado" className="listening">
             <span className="led-live" />
             Escuchando nuevos correos · <b>{NOMBRE_PROVEEDOR[proveedor]}</b>
             <button className="link-mini" onClick={onDesconectar}>
@@ -100,7 +100,7 @@ export function Bandeja({
         ) : (
           <div>
             {solicitudes.map((s) => (
-              <div key={s.id} className="mail" onClick={() => onAbrir(s)}>
+              <div key={s.id} data-testid="solicitud-card" className="mail" onClick={() => onAbrir(s)}>
                 <div className="stripe" style={{ background: colorStripe(s.tipo) }} />
                 <div className="row1">
                   <span className="from">{s.remitente}</span>

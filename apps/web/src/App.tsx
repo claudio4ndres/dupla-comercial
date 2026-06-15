@@ -29,7 +29,7 @@ import {
 import { listarTareasOError } from './api/tareas'
 import { descargarCotizacionExcel, descargarCotizacionPpt } from './api/exportaciones'
 import { obtenerRecursosDrive } from './api/recursos'
-import { obtenerHistorialConversacion } from './api/conversaciones'
+import { obtenerCotizacionEnCurso, obtenerHistorialConversacion } from './api/conversaciones'
 import { supabase } from './supabase/cliente'
 import { EMPRESAS, type RecursoDrive } from './datosMock'
 import type {
@@ -335,10 +335,20 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     obtenerHistorialConversacion(sol.id).then((historial) => {
       if (historial.length) setMensajes(historial)
     })
-    // Precarga los componentes de la propuesta existente (T15): si esta solicitud ya
-    // tiene cotización, el panel "Componentes" deja de estar vacío al abrir el chat.
-    obtenerPropuesta(sol.id).then((prop) => {
-      if (prop && prop.componentes.length) setComponentes(prop.componentes)
+    // Rehidrata la COTIZACIÓN EN CURSO (0009): el borrador que Javo armó en una sesión
+    // previa (componentes/tareas/fuentes). Repuebla el panel para que la cotización no
+    // se pierda al recargar / re-entrar. Si no hay borrador, cae a la propuesta confirmada
+    // (T15): si esta solicitud ya tiene cotización guardada, el panel no queda vacío.
+    obtenerCotizacionEnCurso(sol.id).then((cot) => {
+      if (cot.componentes.length || cot.tareas.length || cot.fuentes.length) {
+        if (cot.componentes.length) setComponentes(cot.componentes)
+        if (cot.tareas.length) setTareas(cot.tareas)
+        if (cot.fuentes.length) setFuentes(cot.fuentes)
+        return
+      }
+      obtenerPropuesta(sol.id).then((prop) => {
+        if (prop && prop.componentes.length) setComponentes(prop.componentes)
+      })
     })
   }
 
@@ -357,7 +367,9 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
 
     // Javo propone los componentes (con su valor REAL del Drive y su origen) y cita
     // sus fuentes (005). Pueblan el panel lateral del chat; el GP los confirma y, al
-    // "Generar propuesta", pasan a la cotización (spec 004). No se persisten aquí.
+    // "Generar propuesta", pasan a la cotización (spec 004). El backend persiste este
+    // estado como BORRADOR de la cotización (0009), así que sobrevive a un refresh: al
+    // re-entrar a la solicitud, `obtenerCotizacionEnCurso` (en iniciarChat) lo repuebla.
     if (r.componentes.length) setComponentes(r.componentes)
     if (r.tareas.length) setTareas(r.tareas)
     if (r.fuentes.length) setFuentes(r.fuentes)

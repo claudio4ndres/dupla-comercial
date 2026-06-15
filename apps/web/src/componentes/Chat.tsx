@@ -79,13 +79,13 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
               {mensajes.map((m, i) => {
                 if (m.rol === 'sistema') return <div key={i} className="msg sys">🌐 {m.contenido}</div>
                 return (
-                  <div key={i} className={'msg ' + (m.rol === 'usuario' ? 'user' : 'bot')}>
+                  <div key={i} className={'msg ' + (m.rol === 'usuario' ? 'user' : 'bot')} {...(m.rol === 'javo' ? { 'data-testid': 'javo-mensaje' } : {})}>
                     {m.contenido}
                   </div>
                 )
               })}
               {enviando && (
-                <div className="typing">
+                <div data-testid="javo-pensando" className="typing">
                   <span />
                   <span />
                   <span />
@@ -103,6 +103,7 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
 
             <div className="composer">
               <textarea
+                data-testid="javo-input"
                 ref={areaRef}
                 rows={1}
                 placeholder="Escríbele a Javo…"
@@ -114,7 +115,7 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
                 }}
                 onKeyDown={alTeclear}
               />
-              <button className="send" disabled={enviando} onClick={() => enviar(texto)} aria-label="Enviar">
+              <button data-testid="javo-enviar" className="send" disabled={enviando} onClick={() => enviar(texto)} aria-label="Enviar">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M22 2L11 13M22 2l-7 20-4-9-9-4z" />
                 </svg>
@@ -135,7 +136,7 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
                 ) : (
                   <>
                     {componentes.map((c) => (
-                      <div key={c.nombre} className="comp-row">
+                      <div key={c.nombre} data-testid="componente-item" className="comp-row">
                         <div>
                           <div className="nm">{c.nombre}</div>
                           <div className="det">
@@ -171,7 +172,7 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
                   <div className="empty">Sin recursos indexados en el Drive todavía.</div>
                 ) : (
                   recursos.map((r) => (
-                    <div key={r.nombre} className="drive-file">
+                    <div key={r.nombre} data-testid="recurso-drive" className="drive-file">
                       <span className="fi">{r.icono}</span> {r.nombre}
                     </div>
                   ))
@@ -186,7 +187,7 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
                 </div>
                 <div className="pb">
                   {fuentes.map((f, i) => (
-                    <div key={i} className="drive-file">
+                    <div key={i} data-testid="fuente-citada" className="drive-file">
                       <span className="fi">🔗</span> {f.titulo}
                       <span style={{ color: 'var(--muted)' }}> · {f.referencia}</span>
                     </div>
@@ -195,7 +196,7 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
               </div>
             )}
 
-            <button className="btn dark" style={{ justifyContent: 'center' }} onClick={onGenerarPropuesta}>
+            <button data-testid="generar-propuesta" className="btn dark" style={{ justifyContent: 'center' }} onClick={onGenerarPropuesta}>
               Generar propuesta ▸
             </button>
           </div>

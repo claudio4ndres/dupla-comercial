@@ -66,12 +66,12 @@ export function DetalleSolicitud({ solicitud, onVolver, onElegirTipo }: Props) {
         <div className="choose">
           <h3>¿Qué tipo de solicitud es?</h3>
           <div className="type-grid">
-            <div className="type-card t1" onClick={() => onElegirTipo('t1')}>
+            <div data-testid="elegir-tipo-1" className="type-card t1" onClick={() => onElegirTipo('t1')}>
               <div className="ico">🧾</div>
               <h4>Tipo 1 · Cotización concreta</h4>
               <p>Ya se sabe qué hacer. Javo te ayuda a definir los componentes y armar la cotización.</p>
             </div>
-            <div className="type-card t2" onClick={() => onElegirTipo('t2')}>
+            <div data-testid="elegir-tipo-2" className="type-card t2" onClick={() => onElegirTipo('t2')}>
               <div className="ico">💡</div>
               <h4>Tipo 2 · Ideas / propuesta</h4>
               <p>Hay que proponer. Javo brainstormea contigo y, si lo pides, busca opciones en internet.</p>

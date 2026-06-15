@@ -524,4 +524,75 @@ describe('App (arnés)', () => {
     expect(screen.getAllByText(/Tarifario_promotores_2026/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/Caso Red Bull F1/i)).toBeInTheDocument()
   })
+
+  it('al rehidratar la conversación, REPUEBLA el panel con la cotización en curso persistida (0009)', async () => {
+    const user = userEvent.setup()
+    // El backend ya tiene un borrador de cotización para esta solicitud (componentes que
+    // Javo armó en una sesión anterior). NO hay propuesta confirmada (GET /propuesta 404).
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      // El hilo de texto se rehidrata (mensajes previos).
+      if (u.includes('/conversaciones/s-212/cotizacion')) {
+        return Promise.resolve(
+          respuesta({
+            componentes: [
+              {
+                nombre: 'Promotoras uniformadas',
+                detalle: '3 tiendas',
+                cantidad: 6,
+                dias: 3,
+                valor_unitario: 240000,
+                origen: 'Tarifario_promotores_2026.xlsx',
+              },
+            ],
+            tareas: [{ nombre: 'Reclutar 6 promotoras', area: 'RRHH', plazo: '3 días', responsable: null }],
+            fuentes: [{ titulo: 'Caso Red Bull F1', referencia: 'https://ejemplo.cl/f1' }],
+          }),
+        )
+      }
+      if (u.endsWith('/conversaciones/s-212')) {
+        return Promise.resolve(
+          respuesta([
+            { rol: 'javo', contenido: '¡Hola! Leí el correo.' },
+            { rol: 'usuario', contenido: 'Son 3 días de activación' },
+            { rol: 'javo', contenido: 'Listo, dejo 6 promotoras.' },
+          ]),
+        )
+      }
+      // No hay propuesta confirmada todavía → 404 (la cotización vive solo en el borrador).
+      if (u.includes('/propuesta')) {
+        return Promise.resolve(respuesta({}, false, 404))
+      }
+      if (u.includes('/solicitudes')) {
+        return Promise.resolve(
+          respuesta([
+            {
+              id: 's-212',
+              remitente: 'Carolina Herrera · 212',
+              correo_origen: 'marketing@carolinaherrera.cl',
+              asunto: 'Cotización activación 212 VIP Black',
+              cuerpo: 'Necesitamos cotizar promotoras…',
+              resumen: 'Activación de sampling 212 VIP Black.',
+              tipo: 'tipo_1',
+              estado: 'nueva',
+            },
+          ]),
+        )
+      }
+      return Promise.resolve(respuesta({ proveedor: 'gmail', estado: 'conectado', casilla: 'javier@capsulab.cl' }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await entrarABandeja(user)
+    await user.click(await screen.findByText(/Carolina Herrera/i))
+    // Entra al chat: SIN enviar ningún mensaje, el panel ya trae la cotización persistida.
+    await user.click(screen.getByText(/Tipo 1 · Cotización concreta/i))
+
+    // El panel "Componentes" se repobló desde el borrador (no quedó vacío ni pidió conversar).
+    expect(await screen.findByText(/Promotoras uniformadas/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/Tarifario_promotores_2026/i).length).toBeGreaterThan(0)
+    // Las fuentes citadas también se rehidratan.
+    expect(screen.getByText(/Caso Red Bull F1/i)).toBeInTheDocument()
+  })
 })

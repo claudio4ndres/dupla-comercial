@@ -106,7 +106,7 @@ export function Configuracion({
                 <b>Correo · Gmail</b>
                 <span className="conector-cat">Bandeja de entrada</span>
               </div>
-              <span className={'conector-estado ' + (correoConectado ? 'on' : 'off')}>
+              <span data-testid="conector-gmail" className={'conector-estado ' + (correoConectado ? 'on' : 'off')}>
                 {correoConectado ? 'Conectado' : 'Sin conectar'}
               </span>
             </div>
@@ -218,7 +218,7 @@ export function Configuracion({
         </div>
 
         <div className="toolbar">
-          <button className="btn primary" onClick={() => onIrA('inbox')}>
+          <button data-testid="ir-a-bandeja" className="btn primary" onClick={() => onIrA('inbox')}>
             Continuar a la bandeja ▸
           </button>
         </div>

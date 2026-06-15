@@ -45,6 +45,7 @@ export function Login({ onEntrar }: Props) {
         <label className="field">
           <span>Correo</span>
           <input
+            data-testid="login-email"
             type="email"
             value={correo}
             onChange={(e) => setCorreo(e.target.value)}
@@ -56,6 +57,7 @@ export function Login({ onEntrar }: Props) {
         <label className="field">
           <span>Contraseña</span>
           <input
+            data-testid="login-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -66,7 +68,7 @@ export function Login({ onEntrar }: Props) {
 
         {error && <p className="login-error" role="alert">{error}</p>}
 
-        <button type="submit" className="btn primary login-btn" disabled={!puedeEntrar}>
+        <button data-testid="login-submit" type="submit" className="btn primary login-btn" disabled={!puedeEntrar}>
           {cargando ? 'Entrando…' : 'Entrar'}
         </button>
       </form>
