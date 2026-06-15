@@ -26,7 +26,9 @@ from app.esquemas import (
 # Id del modelo Sonnet (chat). Enrutar por costo (regla #4): el chat usa Sonnet.
 MODELO_CONVERSACION = "claude-sonnet-4-6"
 
-_MAX_TOKENS = 1024
+# Tope de tokens de la respuesta. 4096 (no 1024): una cotización completa (texto +
+# varios componentes/tareas vía tool-use) no debe truncarse a mitad de la propuesta.
+_MAX_TOKENS = 4096
 
 # Topes del loop de tool-use (robustez + costo): nunca más de N vueltas, ni más de M
 # búsquedas en internet por conversación (CA11).

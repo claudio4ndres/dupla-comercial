@@ -44,6 +44,18 @@ class RepositorioConversaciones(Protocol):
         self, solicitud_id: UUID, empresa_id: UUID, tipo: str
     ) -> UUID: ...
 
+    async def guardar_borrador(
+        self,
+        solicitud_id: UUID,
+        empresa_id: UUID,
+        tipo: str,
+        borrador: dict,
+    ) -> None: ...
+
+    async def obtener_borrador(
+        self, solicitud_id: UUID, empresa_id: UUID
+    ) -> dict | None: ...
+
 
 class RepositorioConversacionesEnMemoria:
     """Doble en memoria para tests. Emula el aislamiento por empresa de la RLS:
@@ -57,6 +69,9 @@ class RepositorioConversacionesEnMemoria:
         self._secuencia = count()
         # Id de la conversación por (empresa, solicitud) — find-or-create en memoria.
         self._ids: dict[tuple[UUID, UUID], UUID] = {}
+        # Borrador de la cotización en curso por (empresa, solicitud): el ÚLTIMO estado
+        # que Javo propuso (componentes/tareas/fuentes). Aislado por empresa (emula RLS).
+        self._borradores: dict[tuple[UUID, UUID], dict] = {}
 
     async def obtener_mensajes(
         self, solicitud_id: UUID, empresa_id: UUID
@@ -93,3 +108,18 @@ class RepositorioConversacionesEnMemoria:
                     or base + timedelta(microseconds=next(self._secuencia)),
                 )
             )
+
+    async def guardar_borrador(
+        self,
+        solicitud_id: UUID,
+        empresa_id: UUID,
+        tipo: str,
+        borrador: dict,
+    ) -> None:
+        # Reemplaza (no acumula): el borrador es el último estado de la cotización.
+        self._borradores[(empresa_id, solicitud_id)] = borrador
+
+    async def obtener_borrador(
+        self, solicitud_id: UUID, empresa_id: UUID
+    ) -> dict | None:
+        return self._borradores.get((empresa_id, solicitud_id))

@@ -24,6 +24,7 @@ from app.dependencias import (
     obtener_repositorio_conversaciones,
 )
 from app.esquemas import (
+    CotizacionBorrador,
     EntradaConversacion,
     MensajeConversacion,
     RespuestaConversacion,
@@ -48,6 +49,23 @@ async def historial(
     return [
         MensajeConversacion(rol=m.rol, contenido=m.contenido) for m in mensajes
     ]
+
+
+@router.get("/{solicitud_id}/cotizacion", response_model=CotizacionBorrador)
+async def cotizacion_en_curso(
+    solicitud_id: UUID,
+    repo=Depends(obtener_repositorio_conversaciones),
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+) -> CotizacionBorrador:
+    """Borrador de la cotización EN CURSO del chat (0009): los componentes/tareas que
+    Javo propuso y las fuentes que citó, persistidos junto a la conversación. El front
+    lo usa para REPOBLAR el panel al rehidratar el hilo (antes el panel se perdía).
+
+    Sólo el de la empresa del usuario (RLS). Sin borrador todavía → cotización vacía."""
+    borrador = await repo.obtener_borrador(solicitud_id, empresa_id)
+    if not borrador:
+        return CotizacionBorrador()
+    return CotizacionBorrador(**borrador)
 
 
 @router.post("/responder", response_model=RespuestaConversacion)
@@ -96,6 +114,23 @@ async def responder(
         if nuevos:
             await repo_conversaciones.guardar_turnos(
                 solicitud, empresa_id, entrada.tipo, nuevos
+            )
+
+        # Persiste el BORRADOR de la cotización (0009): si Javo propuso componentes/
+        # tareas o citó fuentes EN ESTE TURNO, guarda ese estado junto a la conversación
+        # para que el panel sobreviva a un refresh / rehidratación. Si el turno fue solo
+        # texto (no propuso nada), NO se pisa el borrador previo: la cotización en curso
+        # se conserva (evita el bug de que el panel se vacíe al re-conversar).
+        if respuesta.componentes or respuesta.tareas or respuesta.fuentes:
+            await repo_conversaciones.guardar_borrador(
+                solicitud,
+                empresa_id,
+                entrada.tipo,
+                {
+                    "componentes": [c.model_dump() for c in respuesta.componentes],
+                    "tareas": [t.model_dump() for t in respuesta.tareas],
+                    "fuentes": [f.model_dump() for f in respuesta.fuentes],
+                },
             )
 
     return respuesta

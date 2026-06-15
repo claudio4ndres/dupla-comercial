@@ -62,3 +62,48 @@ async def test_aislamiento_por_empresa_no_cruza_tenants():
 
     assert await repo.obtener_mensajes(sol, EMPRESA_B) == []
     assert len(await repo.obtener_mensajes(sol, EMPRESA_A)) == 1
+
+
+# ── Borrador de la cotización en curso (0009) ────────────────────────────────
+async def test_sin_borrador_obtener_devuelve_none():
+    repo = RepositorioConversacionesEnMemoria()
+    sol = uuid4()
+
+    assert await repo.obtener_borrador(sol, EMPRESA_A) is None
+
+
+async def test_guardar_borrador_y_obtenerlo():
+    repo = RepositorioConversacionesEnMemoria()
+    sol = uuid4()
+    borrador = {
+        "componentes": [{"nombre": "Promotoras", "valor_unitario": 240000, "cantidad": 6}],
+        "tareas": [{"nombre": "Reclutar 6 promotoras", "area": "RRHH"}],
+        "fuentes": [{"titulo": "Tarifario 2026", "referencia": "Drive: Tarifario 2026"}],
+    }
+
+    await repo.guardar_borrador(sol, EMPRESA_A, "t1", borrador)
+
+    assert await repo.obtener_borrador(sol, EMPRESA_A) == borrador
+
+
+async def test_guardar_borrador_reemplaza_el_anterior():
+    # El borrador es el ÚLTIMO estado de la cotización, no un acumulado: cada guardado
+    # reemplaza al anterior (lo que Javo tiene armado en este momento).
+    repo = RepositorioConversacionesEnMemoria()
+    sol = uuid4()
+
+    await repo.guardar_borrador(sol, EMPRESA_A, "t1", {"componentes": [{"nombre": "viejo"}]})
+    await repo.guardar_borrador(sol, EMPRESA_A, "t1", {"componentes": [{"nombre": "nuevo"}]})
+
+    assert await repo.obtener_borrador(sol, EMPRESA_A) == {"componentes": [{"nombre": "nuevo"}]}
+
+
+async def test_borrador_aislado_por_empresa_no_cruza_tenants():
+    # El borrador es de la empresa A; la empresa B no lo ve (emula la RLS).
+    repo = RepositorioConversacionesEnMemoria()
+    sol = uuid4()
+
+    await repo.guardar_borrador(sol, EMPRESA_A, "t1", {"componentes": [{"nombre": "privado"}]})
+
+    assert await repo.obtener_borrador(sol, EMPRESA_B) is None
+    assert await repo.obtener_borrador(sol, EMPRESA_A) is not None

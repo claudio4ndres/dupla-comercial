@@ -139,3 +139,70 @@ async def test_guardar_turnos_reusa_conversacion_existente():
     # NO debe crear una conversación nueva (no hay POST a /conversaciones).
     assert not any(m == "POST" and "/conversaciones" in u for m, u in metodos_ruta)
     assert any(m == "POST" and "/mensajes" in u for m, u in metodos_ruta)
+
+
+# ── Borrador de la cotización en curso (0009) ────────────────────────────────
+async def test_guardar_borrador_patchea_la_columna_de_la_conversacion():
+    sol_id = uuid4()
+    conv_id = uuid4()
+    peticiones: list[tuple[str, str, dict | list | None]] = []
+    borrador = {
+        "componentes": [{"nombre": "Promotoras", "valor_unitario": 240000}],
+        "tareas": [],
+        "fuentes": [],
+    }
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        cuerpo = json.loads(req.content) if req.content else None
+        peticiones.append((req.method, str(req.url), cuerpo))
+        # Conversación ya existe (find-or-create devuelve su id).
+        if req.method == "GET" and "/conversaciones" in str(req.url):
+            return httpx.Response(200, json=[{"id": str(conv_id)}])
+        # PATCH del borrador sobre esa conversación.
+        if req.method == "PATCH" and "/conversaciones" in str(req.url):
+            return httpx.Response(200, json=[{"id": str(conv_id)}])
+        return httpx.Response(500, json={})
+
+    await _repo(handler).guardar_borrador(sol_id, EMPRESA, "t1", borrador)
+
+    # El borrador se PATCHea en la fila de la conversación (su columna jsonb).
+    patch = next(c for m, u, c in peticiones if m == "PATCH" and "/conversaciones" in u)
+    assert patch["cotizacion_borrador"] == borrador
+    # El PATCH apunta a la conversación creada/encontrada (por id), con el JWT (RLS).
+    url_patch = next(u for m, u, _ in peticiones if m == "PATCH" and "/conversaciones" in u)
+    assert f"id=eq.{conv_id}" in url_patch
+
+
+async def test_obtener_borrador_lee_la_columna_filtrando_por_solicitud():
+    sol_id = uuid4()
+    visto = {}
+    borrador = {"componentes": [{"nombre": "Promotoras"}], "tareas": [], "fuentes": []}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        visto["auth"] = req.headers.get("authorization")
+        visto["url"] = str(req.url)
+        return httpx.Response(200, json=[{"cotizacion_borrador": borrador}])
+
+    resultado = await _repo(handler).obtener_borrador(sol_id, EMPRESA)
+
+    # El JWT del usuario activa la RLS; se filtra por la conversación de ESA solicitud.
+    assert visto["auth"] == f"Bearer {JWT}"
+    assert "/rest/v1/conversaciones" in visto["url"]
+    assert f"solicitud_id=eq.{sol_id}" in visto["url"]
+    assert "cotizacion_borrador" in visto["url"]
+    assert resultado == borrador
+
+
+async def test_obtener_borrador_sin_conversacion_devuelve_none():
+    def handler(req):
+        return httpx.Response(200, json=[])
+
+    assert await _repo(handler).obtener_borrador(uuid4(), EMPRESA) is None
+
+
+async def test_obtener_borrador_con_columna_nula_devuelve_none():
+    # La conversación existe pero aún no tiene borrador (columna NULL) → None.
+    def handler(req):
+        return httpx.Response(200, json=[{"cotizacion_borrador": None}])
+
+    assert await _repo(handler).obtener_borrador(uuid4(), EMPRESA) is None

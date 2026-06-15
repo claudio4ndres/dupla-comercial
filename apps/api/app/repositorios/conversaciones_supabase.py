@@ -146,3 +146,40 @@ class RepositorioConversacionesSupabase:
             "POST", "/mensajes", headers=self._headers(), json=filas
         )
         resp.raise_for_status()
+
+    async def guardar_borrador(
+        self,
+        solicitud_id: UUID,
+        empresa_id: UUID,
+        tipo: str,
+        borrador: dict,
+    ) -> None:
+        """Guarda el ÚLTIMO estado de la cotización en curso (componentes/tareas/fuentes
+        que Javo propuso) en la columna jsonb `cotizacion_borrador` de la conversación.
+        Find-or-create de la conversación por (solicitud, empresa) y PATCH de la columna.
+        La RLS (WITH CHECK por empresa del JWT) impide tocar conversaciones de otra empresa."""
+        conversacion_id = await self._id_conversacion(solicitud_id, empresa_id, tipo)
+        resp = await self._peticion(
+            "PATCH",
+            f"/conversaciones?id=eq.{conversacion_id}",
+            headers=self._headers(),
+            json={"cotizacion_borrador": borrador},
+        )
+        resp.raise_for_status()
+
+    async def obtener_borrador(
+        self, solicitud_id: UUID, empresa_id: UUID
+    ) -> dict | None:
+        """Lee el borrador de la cotización de la conversación de ESA solicitud. La RLS
+        del JWT restringe a la empresa del usuario; si no hay conversación o la columna
+        está vacía, devuelve None (el front parte el panel sin cotización en curso)."""
+        resp = await self._peticion(
+            "GET",
+            f"/conversaciones?select=cotizacion_borrador&solicitud_id=eq.{solicitud_id}&limit=1",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        filas = resp.json()
+        if not filas:
+            return None
+        return filas[0].get("cotizacion_borrador")

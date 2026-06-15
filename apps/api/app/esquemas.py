@@ -180,6 +180,19 @@ class RespuestaConversacion(BaseModel):
     fuentes: list[Fuente] = []
 
 
+class CotizacionBorrador(BaseModel):
+    """La cotización EN CURSO de una conversación (0009): lo último que Javo propuso
+    (componentes + tareas) y citó (fuentes), sin confirmar todavía como propuesta.
+
+    Se persiste en la columna jsonb `conversaciones.cotizacion_borrador` y se devuelve
+    en `GET /conversaciones/{solicitud_id}/cotizacion` para que el front REPUEBLE el
+    panel del chat al rehidratar el hilo (antes solo se rehidrataba el texto)."""
+
+    componentes: list[ComponentePropuesto] = []
+    tareas: list[TareaPropuesta] = []
+    fuentes: list[Fuente] = []
+
+
 class CrearPropuestaEntrada(BaseModel):
     """Cuerpo del POST que persiste la propuesta que Javo armó en el chat: sus
     componentes valorizados + las tareas de ejecución que propuso."""
