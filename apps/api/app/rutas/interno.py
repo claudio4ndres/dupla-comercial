@@ -21,6 +21,7 @@ from app.dependencias import (
 )
 from app.esquemas import (
     CarpetaDrive,
+    ConectorReconectar,
     DiagnosticoDrive,
     ResumenPoller,
     ResumenReproceso,
@@ -28,6 +29,7 @@ from app.esquemas import (
 from app.servicios.clasificador import clasificar_solicitud
 from app.servicios.gmail import ErrorAutenticacionGmail
 from app.servicios.ingesta_correo import ingerir_correos_nuevos
+from app.servicios.observabilidad import avisar_reconectar
 from app.servicios.reprocesar import reprocesar_correos
 
 router = APIRouter(prefix="/interno", tags=["interno"])
@@ -45,6 +47,29 @@ def verificar_credencial_servicio(
         x_poller_token, secreto_esperado
     ):
         raise HTTPException(status_code=403, detail="credencial de servicio inválida")
+
+
+@router.get("/conectores/reconectar", response_model=list[ConectorReconectar])
+async def conectores_reconectar(
+    repo_integraciones=Depends(obtener_repositorio_integraciones_servicio),
+    _=Depends(verificar_credencial_servicio),
+) -> list[ConectorReconectar]:
+    """Observabilidad del operador (CA3): lista las integraciones en 'reconectar' para
+    que ninguna empresa quede días caída sin que nadie se entere.
+
+    Es un canal de OPERADOR (service-role, protegido por la credencial de servicio), así
+    que cruza empresas a propósito; pero devuelve SÓLO `(empresa_id, proveedor, estado)`
+    vía el `response_model` → JAMÁS expone `token_ref` ni datos de negocio (regla de oro
+    #3, CA7). Sin la credencial → 403."""
+    integraciones = await repo_integraciones.listar_por_estado("reconectar")
+    return [
+        ConectorReconectar(
+            empresa_id=str(i.empresa_id),
+            proveedor=i.proveedor,
+            estado=i.estado,
+        )
+        for i in integraciones
+    ]
 
 
 @router.post("/poller/correo", response_model=ResumenPoller)
@@ -95,6 +120,12 @@ async def poller_correo(
             await repo_integraciones.marcar_estado(
                 integracion.empresa_id, "reconectar", "gmail"
             )
+            # CA5 (Spec 010): señal para el operador. Best-effort — la envolvemos para
+            # que un fallo de la alerta JAMÁS tumbe el poll de las demás empresas.
+            try:
+                avisar_reconectar(integracion.empresa_id, "gmail", "auth_invalida")
+            except Exception:  # noqa: BLE001 — la alerta no puede cortar el poller
+                _LOG.exception("Poller: falló avisar_reconectar; se sigue igual.")
         except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
             # Error NO-auth (409 de BD, Secret Manager, red…): se aísla y se sigue,
             # SIN tocar el estado de la integración (sus credenciales están sanas).

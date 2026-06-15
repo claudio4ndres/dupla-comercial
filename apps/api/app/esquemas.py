@@ -82,6 +82,20 @@ class ResumenPoller(BaseModel):
     solicitudes_creadas: int
 
 
+class ConectorReconectar(BaseModel):
+    """Una integración que cayó a 'reconectar', tal como la lista la observabilidad del
+    operador (GET /interno/conectores/reconectar, Spec 010 · CA3).
+
+    Deliberadamente plano y SIN secretos: sólo `(empresa_id, proveedor, estado)`. Al
+    usarlo como `response_model`, FastAPI descarta `token_ref`, `casilla` y cualquier
+    otro campo interno → la señal jamás expone tokens ni datos de negocio (regla de oro
+    #3, CA7)."""
+
+    empresa_id: str
+    proveedor: str
+    estado: str
+
+
 class ResumenReproceso(BaseModel):
     """Resumen de una corrida del reproceso: cuántas solicitudes 'sin_clasificar' se
     revisaron y cuántas quedaron clasificadas (con descripción)."""

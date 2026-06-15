@@ -19,6 +19,7 @@ from app.esquemas import ResultadoClasificacion
 from app.repositorios.integraciones import Integracion, RepositorioIntegraciones
 from app.repositorios.solicitudes import RepositorioSolicitudes
 from app.servicios.gmail import ClienteGmail, ErrorAutenticacionGmail
+from app.servicios.observabilidad import avisar_reconectar
 
 _LOG = logging.getLogger(__name__)
 
@@ -63,6 +64,9 @@ async def ingerir_correos_nuevos(
         await repo_integraciones.marcar_estado(
             integracion.empresa_id, "reconectar", "gmail"
         )
+        # CA5 (Spec 010): avisar al operador en el momento en que se marca 'reconectar'.
+        # Best-effort y sin token (la función traga sus propios fallos).
+        avisar_reconectar(integracion.empresa_id, "gmail", "auth_invalida")
         return ResultadoIngesta(
             empresa_id=integracion.empresa_id, creadas=0, estado="reconectar"
         )

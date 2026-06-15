@@ -97,6 +97,19 @@ class RepositorioIntegracionesSupabase:
         resp.raise_for_status()
         return [self._a_integracion(f) for f in resp.json()]
 
+    async def listar_por_estado(self, estado: str) -> list[Integracion]:
+        """CA3 (Spec 010): integraciones en un `estado` dado (p.ej. 'reconectar'),
+        para la observabilidad del operador. Lo usa el endpoint interno con la service
+        role (cruza empresas a propósito); el `response_model` del endpoint descarta el
+        `token_ref`, así la señal nunca expone tokens (regla de oro #3)."""
+        resp = await self._peticion(
+            "GET",
+            f"/integraciones?estado=eq.{estado}&select=*",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return [self._a_integracion(f) for f in resp.json()]
+
     async def guardar(self, integracion: Integracion) -> Integracion:
         """Upsert por `(empresa_id, proveedor)`: el callback de OAuth conecta o
         reconecta la misma casilla sin duplicar la fila."""

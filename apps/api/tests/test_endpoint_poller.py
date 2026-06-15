@@ -249,3 +249,97 @@ def test_poller_error_de_auth_si_marca_reconectar():
     integ_b = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_B))
     assert integ_a.estado == "reconectar"  # auth roto → SÍ 'reconectar'
     assert integ_b.estado == "conectado"
+
+
+def test_poller_emite_alerta_al_caer_a_reconectar(caplog):
+    # Spec 010 · CA5: cuando una empresa cae a 'reconectar' por auth rota, el poller
+    # debe dejar una SEÑAL para el operador (empresa_id + proveedor + motivo, SIN
+    # token), y aun así seguir con las demás empresas (Ola 4 intacta).
+    import logging
+
+    repo_int = RepositorioIntegracionesEnMemoria(
+        [_integracion(EMPRESA_A), _integracion(EMPRESA_B)]
+    )
+    repo_sol = RepositorioSolicitudesEnMemoria([])
+    fabrica = FabricaClienteGmailFake(
+        {
+            EMPRESA_A: ClienteGmailQueFallaAuth(),  # token expirado/revocado
+            EMPRESA_B: ClienteGmailFake([_mensaje("b-1")], nuevo_cursor="cur-B"),
+        }
+    )
+    http = _cliente_http(repo_int, repo_sol, fabrica)
+
+    with caplog.at_level(logging.WARNING):
+        r = http.post("/interno/poller/correo")
+
+    assert r.status_code == 200
+    # B se procesó igual (la alerta de A no la tumba).
+    assert r.json() == {"empresas_procesadas": 2, "solicitudes_creadas": 1}
+    integ_a = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_A))
+    assert integ_a.estado == "reconectar"
+
+    # La señal del operador para A: empresa_id + proveedor + motivo, SIN token_ref.
+    texto = " ".join(rec.getMessage() for rec in caplog.records)
+    assert str(EMPRESA_A) in texto
+    assert "gmail" in texto
+    assert "auth_invalida" in texto
+    assert "secreto://" not in texto  # jamás el token
+
+
+class _GmailAuthQueEscapaIngesta:
+    """Cliente cuyo fallo de auth NO lo absorbe la ingesta: lo lanza al avanzar el
+    cursor (después de `listar_nuevos`), así sube por el `except` PROPIO del poller.
+    Sirve para probar el punto de alerta del poller de forma aislada."""
+
+    def __init__(self):
+        self.llamadas: list = []
+
+    async def listar_nuevos(self, cursor):
+        # Devuelve sin correos: la ingesta intentará avanzar el cursor y ahí falla.
+        return [], "cur-x"
+
+
+def test_poller_alerta_best_effort_no_tumba_a_las_demas(monkeypatch, caplog):
+    # Spec 010 · CA5 best-effort: si emitir la alerta del poller REVIENTA, NO debe
+    # tumbar el poll de las demás empresas. Forzamos el camino de auth que sube por el
+    # `except` propio del poller y hacemos fallar `avisar_reconectar`.
+    import logging
+
+    import app.rutas.interno as interno
+    from app.servicios.gmail import ErrorAutenticacionGmail
+
+    # Cliente A: su `actualizar_cursor` revienta con auth → sube al `except` del poller.
+    class _RepoIntQueFallaAuthEnCursor(RepositorioIntegracionesEnMemoria):
+        async def actualizar_cursor(self, empresa_id, cursor):
+            if empresa_id == EMPRESA_A:
+                raise ErrorAutenticacionGmail("refresh revocado al avanzar cursor")
+            await super().actualizar_cursor(empresa_id, cursor)
+
+    repo_int = _RepoIntQueFallaAuthEnCursor(
+        [_integracion(EMPRESA_A), _integracion(EMPRESA_B)]
+    )
+    repo_sol = RepositorioSolicitudesEnMemoria([])
+    fabrica = FabricaClienteGmailFake(
+        {
+            EMPRESA_A: _GmailAuthQueEscapaIngesta(),
+            EMPRESA_B: ClienteGmailFake([_mensaje("b-1")], nuevo_cursor="cur-B"),
+        }
+    )
+
+    # La alerta revienta: el poller debe tragarlo (best-effort) y seguir con B.
+    def _alerta_rota(*args, **kwargs):
+        raise RuntimeError("canal de alerta caído")
+
+    monkeypatch.setattr(interno, "avisar_reconectar", _alerta_rota)
+
+    http = _cliente_http(repo_int, repo_sol, fabrica)
+
+    with caplog.at_level(logging.WARNING):
+        r = http.post("/interno/poller/correo")
+
+    assert r.status_code == 200  # NO 500 aunque la alerta de A reviente
+    # B se procesó igual; A quedó 'reconectar' pese a que la alerta falló.
+    integ_a = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_A))
+    integ_b = asyncio.run(repo_int.obtener_por_empresa(EMPRESA_B))
+    assert integ_a.estado == "reconectar"
+    assert integ_b.estado == "conectado"

@@ -30,6 +30,7 @@ class RepositorioIntegraciones(Protocol):
         self, empresa_id: UUID, proveedor: str
     ) -> Integracion | None: ...
     async def listar_por_proveedor(self, proveedor: str) -> list[Integracion]: ...
+    async def listar_por_estado(self, estado: str) -> list[Integracion]: ...
     async def guardar(self, integracion: Integracion) -> Integracion: ...
     async def actualizar_cursor(
         self, empresa_id: UUID, cursor: str | None
@@ -70,6 +71,11 @@ class RepositorioIntegracionesEnMemoria:
         return [
             i for i in self._por_clave.values() if i.proveedor == proveedor
         ]
+
+    async def listar_por_estado(self, estado: str) -> list[Integracion]:
+        # CA3 (Spec 010): alimenta la observabilidad del operador ("¿quién está en
+        # 'reconectar'?"). Cruza empresas y proveedores por diseño (canal de operador).
+        return [i for i in self._por_clave.values() if i.estado == estado]
 
     async def guardar(self, integracion: Integracion) -> Integracion:
         # upsert por (empresa, proveedor): el callback de OAuth conecta o reconecta.
