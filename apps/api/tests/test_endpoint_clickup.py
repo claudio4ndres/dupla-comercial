@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.config import Settings, obtener_settings
+from app.config import obtener_settings
 from app.dependencias import (
     obtener_cliente_clickup,
     obtener_empresa_actual,
@@ -93,8 +93,8 @@ def _http(*, clickup=None, repo=None, empresa_id=EMPRESA_A, settings=None, repo_
     )
     app.dependency_overrides[obtener_empresa_actual] = lambda: empresa_id
     if settings is not None:
-        # Fija la lista por defecto (fallback del POST) sin tocar el `.env`: el
-        # endpoint lee `settings.clickup_list_id` vía la dependencia obtener_settings.
+        # Permite inyectar unos Settings propios sin tocar el `.env`, vía la
+        # dependencia obtener_settings.
         app.dependency_overrides[obtener_settings] = lambda: settings
     return TestClient(app)
 
@@ -276,16 +276,13 @@ def test_enviar_sin_body_mantiene_comportamiento_actual():
 
 
 def test_enviar_sin_lista_devuelve_400_no_manda_a_lista_ajena():
-    # #6 · Se ELIMINÓ el fallback global `settings.clickup_list_id`: si no viene
-    # `lista_id`, el endpoint responde 400 ("elige una lista") en vez de mandar a una
-    # lista por defecto que podría ser de OTRA empresa. Aunque haya un clickup_list_id
-    # global configurado, NO se usa (jamás se manda a una lista ajena).
+    # #6 · Se ELIMINÓ el fallback global de lista (Ola 4): si no viene `lista_id`,
+    # el endpoint responde 400 ("elige una lista") en vez de mandar a una lista por
+    # defecto que podría ser de OTRA empresa. Jamás se manda a una lista ajena.
     sol = uuid4()
     repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
     clickup = ClienteClickUpFake()
-    # Aunque exista un global, NO debe usarse como destino.
-    settings = Settings(_env_file=None, clickup_list_id="LISTA_DE_OTRA_EMPRESA")
-    http = _http(clickup=clickup, repo=repo, settings=settings)
+    http = _http(clickup=clickup, repo=repo)
 
     r = http.post(f"/solicitudes/{sol}/tareas/clickup")
 
