@@ -1026,6 +1026,13 @@ h1.page {
   background: #fbe7c6;
   color: #9a5b00;
 }
+/* "Comprobando…": estado transitorio mientras el front aún no sabe si el correo
+   está conectado. Azul-gris neutro (no alarma como "off"), evita el flash que
+   parecía desconexión al volver a los conectores. */
+.conector-estado.loading {
+  background: #e7eef6;
+  color: #5b6b80;
+}
 .conector-body {
   display: flex;
   align-items: center;

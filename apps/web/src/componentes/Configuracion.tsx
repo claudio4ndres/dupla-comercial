@@ -12,6 +12,13 @@ import type { Pantalla, ProveedorCorreo } from '../tipos'
 interface Props {
   /** Estado real de la bandeja de correo (proveedor/estado/casilla) que trae App. */
   estadoCorreo: EstadoCorreo
+  /**
+   * ¿App aún espera la PRIMERA respuesta del estado de correo? Mientras sea true no
+   * sabemos si Gmail está conectado, así que la tarjeta muestra "Comprobando…" en
+   * vez de "Sin conectar" (evita el flash que parecía desconexión al volver aquí).
+   * Default false: si App no lo pasa, se asume resuelto (compat con tests/usos).
+   */
+  cargandoCorreo?: boolean
   /** Inicia la conexión OAuth del proveedor (reusa el handler de App). */
   onConectar: (proveedor: ProveedorCorreo) => void
   /** Desconecta la bandeja ("Cambiar") — reusa el handler de App. */
@@ -40,6 +47,7 @@ interface Props {
  */
 export function Configuracion({
   estadoCorreo,
+  cargandoCorreo = false,
   onConectar,
   onDesconectar,
   onIrA,
@@ -82,6 +90,9 @@ export function Configuracion({
   }
 
   const correoConectado = estadoCorreo.estado === 'conectado'
+  // Mientras App resuelve el estado real, no afirmamos "Sin conectar": la tarjeta
+  // queda en "Comprobando…" (solo si aún no sabemos que está conectado).
+  const correoComprobando = cargandoCorreo && !correoConectado
   const clickUpConectado = estadoClickUp?.estado === 'conectado'
   const clickUpReconectar = estadoClickUp?.estado === 'reconectar'
 
@@ -106,12 +117,20 @@ export function Configuracion({
                 <b>Correo · Gmail</b>
                 <span className="conector-cat">Bandeja de entrada</span>
               </div>
-              <span data-testid="conector-gmail" className={'conector-estado ' + (correoConectado ? 'on' : 'off')}>
-                {correoConectado ? 'Conectado' : 'Sin conectar'}
+              <span
+                data-testid="conector-gmail"
+                className={
+                  'conector-estado ' +
+                  (correoConectado ? 'on' : correoComprobando ? 'loading' : 'off')
+                }
+              >
+                {correoConectado ? 'Conectado' : correoComprobando ? 'Comprobando…' : 'Sin conectar'}
               </span>
             </div>
             <div className="conector-body">
-              {correoConectado ? (
+              {correoComprobando ? (
+                <p className="conector-detalle">Comprobando la conexión de tu Gmail…</p>
+              ) : correoConectado ? (
                 <>
                   <p className="conector-detalle">
                     Escuchando la casilla <b>{estadoCorreo.casilla ?? 'conectada'}</b>.

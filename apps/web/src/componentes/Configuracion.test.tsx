@@ -76,6 +76,58 @@ describe('Configuracion (onboarding de conectores)', () => {
     expect(screen.getByRole('button', { name: /cambiar/i })).toBeInTheDocument()
   })
 
+  it('mientras App resuelve el estado del correo, muestra "Comprobando…" (NO "Sin conectar")', async () => {
+    // Bug: al volver al onboarding, Gmail parpadeaba "Sin conectar" aunque estaba
+    // conectado, porque App aún no había resuelto el estado real. Con cargandoCorreo
+    // la tarjeta debe quedar en "Comprobando…" en vez de afirmar la desconexión.
+    render(
+      <Configuracion
+        estadoCorreo={ESTADO_DESCONECTADO}
+        cargandoCorreo
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    const badge = screen.getByTestId('conector-gmail')
+    expect(badge).toHaveTextContent(/comprobando/i)
+    // Lo crítico: NO debe afirmar "Sin conectar" mientras carga (eso era el flash).
+    expect(badge).not.toHaveTextContent(/sin conectar/i)
+    // Tampoco ofrece "Conectar Gmail" todavía (no sabemos si hace falta).
+    expect(screen.queryByRole('button', { name: /conectar gmail/i })).not.toBeInTheDocument()
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
+  })
+
+  it('ya resuelto y desconectado, muestra "Sin conectar" (cargandoCorreo=false)', async () => {
+    render(
+      <Configuracion
+        estadoCorreo={ESTADO_DESCONECTADO}
+        cargandoCorreo={false}
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    expect(screen.getByTestId('conector-gmail')).toHaveTextContent(/sin conectar/i)
+    expect(screen.getByRole('button', { name: /conectar gmail/i })).toBeInTheDocument()
+    await waitFor(() => expect(mockEstadoClickup).toHaveBeenCalled())
+  })
+
+  it('conectado tiene prioridad sobre cargandoCorreo (no muestra "Comprobando…")', () => {
+    // Si ya sabemos que está conectado, una recarga de fondo no debe degradar la UI.
+    render(
+      <Configuracion
+        estadoCorreo={CORREO_CONECTADO}
+        cargandoCorreo
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    expect(screen.getByTestId('conector-gmail')).toHaveTextContent(/conectado/i)
+    expect(screen.getByText(/javier@capsulab\.cl/i)).toBeInTheDocument()
+  })
+
   it('sin correo conectado, ofrece conectar Gmail y dispara onConectar("gmail")', async () => {
     const user = userEvent.setup()
     const onConectar = vi.fn()

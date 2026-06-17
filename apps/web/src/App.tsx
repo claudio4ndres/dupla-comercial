@@ -89,6 +89,12 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
   const [pantalla, setPantalla] = useState<Pantalla>('configuracion')
   // Estado de la bandeja (proveedor + estado) según el backend (null = sin conectar).
   const [estadoCorreo, setEstadoCorreo] = useState<EstadoCorreo>(ESTADO_DESCONECTADO)
+  // ¿Aún esperamos la PRIMERA respuesta de GET /integraciones/correo? Mientras sea
+  // true no sabemos si el correo está conectado, así que el onboarding muestra
+  // "Comprobando…" en vez de "Sin conectar" (evita el flash que parecía desconexión
+  // al navegar de vuelta a los conectores). Arranca en true (el landing es el
+  // onboarding) y se reinicia en cada recarga del estado (cambio de empresa).
+  const [cargandoCorreo, setCargandoCorreo] = useState(true)
   // Solicitudes REALES de la empresa (las que el poller ingirió desde el correo).
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([])
   // Estado de carga/error de la bandeja: `cargando` mientras llega la PRIMERA
@@ -144,12 +150,22 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
   }, [sesion])
 
   // Carga el estado real de la bandeja desde el backend (T13) y lo recarga al
-  // cambiar de empresa (cada tenant tiene su propia conexión).
+  // cambiar de empresa (cada tenant tiene su propia conexión). `cargandoCorreo`
+  // cubre la ventana en que aún no llega la respuesta: el onboarding NO debe pintar
+  // "Sin conectar" mientras tanto (sería un flash que parece desconexión).
   useEffect(() => {
     let activo = true
-    obtenerEstadoCorreo().then((e) => {
-      if (activo) setEstadoCorreo(e)
-    })
+    // Reabrimos la ventana de carga: sincroniza la UI con el fetch que arranca aquí
+    // (no es estado derivado), de ahí el disable puntual del lint.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCargandoCorreo(true)
+    obtenerEstadoCorreo()
+      .then((e) => {
+        if (activo) setEstadoCorreo(e)
+      })
+      .finally(() => {
+        if (activo) setCargandoCorreo(false)
+      })
     return () => {
       activo = false
     }
@@ -443,6 +459,7 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
           {pantalla === 'configuracion' && (
             <Configuracion
               estadoCorreo={estadoCorreo}
+              cargandoCorreo={cargandoCorreo}
               onConectar={conectarProveedor}
               onDesconectar={desconectarProveedor}
               onIrA={irA}
