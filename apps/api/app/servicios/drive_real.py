@@ -111,6 +111,9 @@ class ClienteDriveReal:
                 params={
                     "q": f"'{folder_id}' in parents and trashed=false",
                     "fields": "files(id,name,mimeType)",
+                    "includeItemsFromAllDrives": "true",
+                    "supportsAllDrives": "true",
+                    "corpora": "allDrives",
                 },
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -137,6 +140,9 @@ class ClienteDriveReal:
                     "fields": "files(id,name,mimeType)",
                     "orderBy": "modifiedTime desc",
                     "pageSize": page_size,
+                    "includeItemsFromAllDrives": "true",
+                    "supportsAllDrives": "true",
+                    "corpora": "allDrives",
                 },
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -171,6 +177,9 @@ class ClienteDriveReal:
                     ),
                     "fields": "files(id,name,mimeType)",
                     "pageSize": 100,
+                    "includeItemsFromAllDrives": "true",
+                    "supportsAllDrives": "true",
+                    "corpora": "allDrives",
                 },
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -203,6 +212,12 @@ class ClienteDriveReal:
                     ),
                     "fields": "files(id,name,mimeType)",
                     "pageSize": 30,
+                    # Cubrir TODO el Drive del usuario: Mi unidad + Unidades compartidas
+                    # (Shared Drives). Sin estos flags, la API solo mira "Mi unidad" y se
+                    # pierde lo que vive en unidades compartidas (típico tarifario de agencia).
+                    "includeItemsFromAllDrives": "true",
+                    "supportsAllDrives": "true",
+                    "corpora": "allDrives",
                 },
                 headers={"Authorization": f"Bearer {token}"},
             )
