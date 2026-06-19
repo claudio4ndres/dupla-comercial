@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Sidebar } from './componentes/Sidebar'
 import { Topbar } from './componentes/Topbar'
 import { Bandeja } from './componentes/Bandeja'
@@ -10,57 +10,21 @@ import { PropuestasLista } from './componentes/PropuestasLista'
 import { Tareas } from './componentes/Tareas'
 import { Login } from './componentes/Login'
 import { BannerError, CargandoLista } from './componentes/EstadoLista'
-import { conversarConJavo } from './api/javo'
 import {
   desconectarCorreo,
   ESTADO_DESCONECTADO,
   iniciarConexionGmail,
-  obtenerEstadoCorreo,
-  type EstadoCorreo,
 } from './api/integraciones'
-import { obtenerSolicitudesOError } from './api/solicitudes'
-import { obtenerEmpresa } from './api/empresa'
-import {
-  guardarPropuesta,
-  listarPropuestasOError,
-  obtenerPropuesta,
-  type PropuestaResumen,
-} from './api/propuestas'
-import { listarTareasOError } from './api/tareas'
 import { descargarCotizacionExcel, descargarCotizacionPpt } from './api/exportaciones'
-import { obtenerRecursosDrive } from './api/recursos'
-import { obtenerCotizacionEnCurso, obtenerHistorialConversacion } from './api/conversaciones'
-import { supabase } from './supabase/cliente'
-import { EMPRESAS, type RecursoDrive } from './datosMock'
+import { EMPRESAS } from './datosMock'
+import { useSesion } from './contextos/SesionContext'
+import { useSolicitud } from './contextos/SolicitudContext'
+import { useBandeja } from './contextos/BandejaContext'
 import type {
-  Componente,
   Empresa,
-  Fuente,
-  Mensaje,
   Pantalla,
   ProveedorCorreo,
-  Sesion,
-  Solicitud,
-  Tarea,
-  TipoConfirmado,
 } from './tipos'
-
-/** Primer mensaje de Javo al iniciar la conversación, según el tipo. */
-function introJavo(solicitud: Solicitud, tipo: TipoConfirmado): string {
-  if (tipo === 't1') {
-    return (
-      `¡Hola! 👋 Leí el correo de ${solicitud.remitente}. Es una cotización concreta: ` +
-      `${solicitud.resumen.toLowerCase()}\n\n` +
-      'Vamos armando los componentes. ¿Confirmas que cotizamos catering, promotores, producto y ' +
-      'uniforme para 5 horas diarias? ¿Cuántos días dura la activación?'
-    )
-  }
-  return (
-    `¡Hola! 👋 Leí el correo de ${solicitud.remitente}. Es un pedido de ideas, sin brief cerrado todavía.\n\n` +
-    'Te tiro algunos conceptos para partir. Si quieres, puedo buscar referencias y opciones en ' +
-    'internet — solo dime "busca en internet".'
-  )
-}
 
 interface AppProps {
   /** Inyectable para tests: por defecto navega el navegador a la URL de OAuth. */
@@ -68,255 +32,62 @@ interface AppProps {
 }
 
 function App({ onNavegar = (url: string) => window.location.assign(url) }: AppProps = {}) {
-  // Sesión reactiva: null = cargando (undefined), null = sin sesión, Sesion = autenticado.
-  // Usamos undefined para distinguir "aún no sé" de "no hay sesión" y evitar flash del login.
-  const [sesion, setSesion] = useState<Sesion | null | undefined>(undefined)
+  // Estado de sesión, empresa y navegación provienen del contexto.
+  const { sesion, empresa, setEmpresa, cerrarSesion, pantalla, irA: irAContexto } = useSesion()
 
-  useEffect(() => {
-    // Leer sesión inicial desde el almacenamiento del cliente de Supabase.
-    supabase.auth.getSession().then(({ data }) => {
-      setSesion(data.session ? { correo: data.session.user.email ?? '' } : null)
-    })
-    // Suscribirse a cambios (login / logout / refresh de token).
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSesion(session ? { correo: session.user.email ?? '' } : null)
-    })
-    return () => subscription.unsubscribe()
-  }, [])
-  const [empresa, setEmpresa] = useState<Empresa>(EMPRESAS[0])
-  // Landing post-login: el onboarding de Configuración (cada empresa "prepara su
-  // espacio" conectando sus conectores). Desde ahí se continúa a la bandeja.
-  const [pantalla, setPantalla] = useState<Pantalla>('configuracion')
-  // Estado de la bandeja (proveedor + estado) según el backend (null = sin conectar).
-  const [estadoCorreo, setEstadoCorreo] = useState<EstadoCorreo>(ESTADO_DESCONECTADO)
-  // ¿Aún esperamos la PRIMERA respuesta de GET /integraciones/correo? Mientras sea
-  // true no sabemos si el correo está conectado, así que el onboarding muestra
-  // "Comprobando…" en vez de "Sin conectar" (evita el flash que parecía desconexión
-  // al navegar de vuelta a los conectores). Arranca en true (el landing es el
-  // onboarding) y se reinicia en cada recarga del estado (cambio de empresa).
-  const [cargandoCorreo, setCargandoCorreo] = useState(true)
-  // Solicitudes REALES de la empresa (las que el poller ingirió desde el correo).
-  const [solicitudes, setSolicitudes] = useState<Solicitud[]>([])
-  // Estado de carga/error de la bandeja: `cargando` mientras llega la PRIMERA
-  // respuesta (para no mostrar el vacío como si "no hubiera correos"); `error` si
-  // el GET falla (para avisar con un banner de reintento en vez de un vacío mudo).
-  const [cargandoSolicitudes, setCargandoSolicitudes] = useState(true)
-  const [errorSolicitudes, setErrorSolicitudes] = useState(false)
-  // Propuestas REALES de la empresa (lista del menú "Propuestas").
-  const [propuestas, setPropuestas] = useState<PropuestaResumen[]>([])
-  const [cargandoPropuestas, setCargandoPropuestas] = useState(true)
-  const [errorPropuestas, setErrorPropuestas] = useState(false)
-  // Nonces de reintento: al subirlos, el efecto de carga correspondiente vuelve a
-  // correr (es la forma de "Reintentar" desde el banner de error sin duplicar la
-  // lógica de fetch). Cada lista tiene el suyo.
-  const [reintentoSolicitudes, setReintentoSolicitudes] = useState(0)
-  const [reintentoPropuestas, setReintentoPropuestas] = useState(0)
-  const [reintentoTareas, setReintentoTareas] = useState(0)
-  const [solicitudActual, setSolicitudActual] = useState<Solicitud | null>(null)
-  const [tipo, setTipo] = useState<TipoConfirmado>('t1')
-  const [mensajes, setMensajes] = useState<Mensaje[]>([])
-  const [componentes, setComponentes] = useState<Componente[]>([])
-  // Tareas de la cotización (vienen del backend junto con los componentes).
-  const [tareas, setTareas] = useState<Tarea[]>([])
-  // Carga/error de la LISTA global de tareas (menú "Tareas"). No aplica cuando
-  // las tareas vienen del flujo de una propuesta (ya están en estado).
-  const [cargandoTareas, setCargandoTareas] = useState(true)
-  const [errorTareas, setErrorTareas] = useState(false)
-  // Fuentes que Javo citó en la conversación (recursos del Drive / web) — 005.
-  const [fuentes, setFuentes] = useState<Fuente[]>([])
-  // Recursos del Drive de la empresa (panel del chat): reales desde el catálogo.
-  const [recursos, setRecursos] = useState<RecursoDrive[]>([])
-  const [enviando, setEnviando] = useState(false)
+  // Estado de la solicitud activa, chat y cotización provienen del contexto.
+  const {
+    solicitudActual,
+    tipo,
+    mensajes,
+    componentes,
+    tareas,
+    fuentes,
+    enviando,
+    recursos,
+    abrirSolicitud,
+    iniciarChat,
+    enviarMensaje,
+    generarPropuesta,
+  } = useSolicitud()
+
+  // Estado de la bandeja (solicitudes, propuestas, tareas globales, correo) del contexto.
+  const {
+    solicitudes,
+    cargandoSolicitudes,
+    errorSolicitudes,
+    setReintentoSolicitudes,
+    propuestas,
+    cargandoPropuestas,
+    errorPropuestas,
+    setReintentoPropuestas,
+    cargandoTareas,
+    errorTareas,
+    setReintentoTareas,
+    estadoCorreo,
+    cargandoCorreo,
+    abrirPropuestaDesdeLista,
+  } = useBandeja()
+
+  // Estado estrictamente local de UI.
   const [menuAbierto, setMenuAbierto] = useState(false)
 
-  // White-label: el color de marca cambia según la empresa activa.
-  useEffect(() => {
-    const raiz = document.documentElement
-    raiz.style.setProperty('--brand', empresa.color)
-    raiz.style.setProperty('--brand-soft', empresa.color + '22')
-  }, [empresa])
-
-  // El header/branding (nombre, color) sale del tenant REAL del usuario, no del mock:
-  // al haber sesión se pide la empresa al backend y se reemplaza el placeholder.
-  useEffect(() => {
-    if (!sesion) return
-    let activo = true
-    obtenerEmpresa().then((e) => {
-      if (activo && e) setEmpresa(e)
-    })
-    return () => {
-      activo = false
-    }
-  }, [sesion])
-
-  // Carga el estado real de la bandeja desde el backend (T13) y lo recarga al
-  // cambiar de empresa (cada tenant tiene su propia conexión). `cargandoCorreo`
-  // cubre la ventana en que aún no llega la respuesta: el onboarding NO debe pintar
-  // "Sin conectar" mientras tanto (sería un flash que parece desconexión).
-  useEffect(() => {
-    let activo = true
-    // Reabrimos la ventana de carga: sincroniza la UI con el fetch que arranca aquí
-    // (no es estado derivado), de ahí el disable puntual del lint.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCargandoCorreo(true)
-    obtenerEstadoCorreo()
-      .then((e) => {
-        if (activo) setEstadoCorreo(e)
-      })
-      .finally(() => {
-        if (activo) setCargandoCorreo(false)
-      })
-    return () => {
-      activo = false
-    }
-  }, [empresa])
-
-  // Recursos del Drive de la empresa (panel del chat): se leen del catálogo real
-  // (ya no es un mock estático). Por empresa (cada tenant su Drive).
-  useEffect(() => {
-    let activo = true
-    obtenerRecursosDrive().then((r) => {
-      if (activo) setRecursos(r)
-    })
-    return () => {
-      activo = false
-    }
-  }, [empresa])
-
-  // Carga las solicitudes REALES cada vez que se entra a la bandeja (así aparecen
-  // los correos que el poller fue ingiriendo). NO se exige estado 'conectado': el
-  // backend ya filtra por empresa con RLS y, si el token quedó en 'reconectar',
-  // los correos YA ingeridos deben seguir viéndose (el banner de 'reconectar' solo
-  // avisa que la PRÓXIMA ingesta necesita reconectar). Solo se vacía cuando la
-  // bandeja está sin conectar del todo (sin proveedor): ahí no hay nada que pedir.
-  useEffect(() => {
-    if (pantalla !== 'inbox') return
-    if (estadoCorreo.proveedor === null) {
-      // Sin proveedor conectado no hay solicitudes que mostrar. Limpiar aquí es
-      // sincronizar con el backend (no es estado derivado), de ahí el disable.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSolicitudes([])
-      return
-    }
-    let activo = true
-    // Solo la PRIMERA carga muestra "Cargando…"; el auto-refresh de 20s es
-    // silencioso (no debe parpadear el spinner cada vez que reconsulta).
-    let esPrimera = true
-    const cargar = () => {
-      if (esPrimera) {
-        setCargandoSolicitudes(true)
-        setErrorSolicitudes(false)
-      }
-      return obtenerSolicitudesOError()
-        .then((s) => {
-          if (!activo) return
-          setSolicitudes(s)
-          setErrorSolicitudes(false)
-        })
-        .catch(() => {
-          // El cliente normalmente traga el error; aquí usamos la variante que lo
-          // propaga para distinguir "vacío real" de "fallo" y avisar con el banner.
-          if (activo) setErrorSolicitudes(true)
-        })
-        .finally(() => {
-          if (activo) setCargandoSolicitudes(false)
-          esPrimera = false
-        })
-    }
-    cargar() // carga inmediata al entrar a la bandeja
-    // Auto-refresh: la bandeja se actualiza SOLA cada 20s, para que los correos que
-    // el poller va ingiriendo aparezcan sin recargar a mano — la gracia del producto
-    // (Javo "ve" los correos entrar). Se limpia al salir de la bandeja.
-    const intervalo = setInterval(cargar, 20000)
-    return () => {
-      activo = false
-      clearInterval(intervalo)
-    }
-  }, [empresa, estadoCorreo.proveedor, pantalla, reintentoSolicitudes])
-
-  // Carga la lista REAL de propuestas al entrar a la pantalla "Propuestas" del
-  // menú (y al cambiar de empresa). Sin sesión/backend, queda vacía (sin mock).
-  useEffect(() => {
-    if (pantalla !== 'propuestas') return
-    let activo = true
-    // Marcar "cargando" al iniciar la carga es sincronizar la UI con el fetch que
-    // arranca aquí (no es estado derivado), por eso el disable puntual.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCargandoPropuestas(true)
-    setErrorPropuestas(false)
-    listarPropuestasOError()
-      .then((p) => {
-        if (!activo) return
-        setPropuestas(p)
-        setErrorPropuestas(false)
-      })
-      .catch(() => {
-        if (activo) setErrorPropuestas(true)
-      })
-      .finally(() => {
-        if (activo) setCargandoPropuestas(false)
-      })
-    return () => {
-      activo = false
-    }
-  }, [empresa, pantalla, reintentoPropuestas])
-
-  // Carga la lista REAL de tareas al entrar a "Tareas" por el menú SIN tareas en
-  // estado. Si se viene del flujo de una propuesta (tareas ya cargadas), se
-  // respetan esas y no se pisan con la lista global.
-  useEffect(() => {
-    if (pantalla !== 'tareas' || tareas.length > 0) return
-    let activo = true
-    // Igual que en propuestas: sincronizar "cargando" con el fetch que arranca aquí.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCargandoTareas(true)
-    setErrorTareas(false)
-    listarTareasOError()
-      .then((t) => {
-        if (!activo) return
-        setTareas(t)
-        setErrorTareas(false)
-      })
-      .catch(() => {
-        if (activo) setErrorTareas(true)
-      })
-      .finally(() => {
-        if (activo) setCargandoTareas(false)
-      })
-    return () => {
-      activo = false
-    }
-  }, [empresa, pantalla, tareas.length, reintentoTareas])
-
+  // Wrapper local: irA del contexto + cerrar menú (estado local de UI).
   function irA(p: Pantalla) {
-    setPantalla(p)
+    irAContexto(p)
     setMenuAbierto(false)
   }
 
   function iniciarSesion(correo: string) {
-    // onAuthStateChange ya actualizó `sesion`; este callback sólo sirve de
-    // puente para que Login.tsx pueda seguir usando la misma prop `onEntrar`.
     void correo
-  }
-
-  async function cerrarSesion() {
-    await supabase.auth.signOut()
-    // onAuthStateChange pondrá sesion = null automáticamente.
   }
 
   function cambiarEmpresa(e: Empresa) {
     setEmpresa(e)
-    // Cada empresa (tenant) conecta su propia bandeja: al cambiar, se resetea
-    // (el efecto sobre [empresa] recarga el estado real desde el backend).
-    setEstadoCorreo(ESTADO_DESCONECTADO)
     irA('inbox')
   }
 
   async function conectarProveedor(p: ProveedorCorreo) {
-    // Sólo Gmail en esta etapa (Spec 002). El backend entrega la URL de
-    // consentimiento (con el `state` anti-CSRF y el scope mínimo `gmail.readonly`);
-    // el front NUNCA la inventa (regla de oro #3). Tras autorizar, Google vuelve
-    // al callback y el backend deja la integración en 'conectado'.
     if (p !== 'gmail') return
     try {
       const url = await iniciarConexionGmail()
@@ -327,108 +98,7 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
   }
 
   async function desconectarProveedor() {
-    // El "Cambiar": borra integración + secreto en el backend y vuelve a "conectar".
     await desconectarCorreo()
-    setEstadoCorreo(ESTADO_DESCONECTADO)
-  }
-
-  function abrirSolicitud(s: Solicitud) {
-    setSolicitudActual(s)
-    irA('detail')
-  }
-
-  function iniciarChat(t: TipoConfirmado) {
-    if (!solicitudActual) return
-    const sol = solicitudActual
-    setTipo(t)
-    setComponentes([])
-    setTareas([])
-    setFuentes([])
-    setMensajes([{ rol: 'javo', contenido: introJavo(sol, t) }])
-    irA('chat')
-    // Rehidrata el hilo persistido (T14): si ya hubo conversación para esta
-    // solicitud, reemplaza el saludo inicial; si no, el chat parte desde el saludo.
-    obtenerHistorialConversacion(sol.id).then((historial) => {
-      if (historial.length) setMensajes(historial)
-    })
-    // Rehidrata la COTIZACIÓN EN CURSO (0009): el borrador que Javo armó en una sesión
-    // previa (componentes/tareas/fuentes). Repuebla el panel para que la cotización no
-    // se pierda al recargar / re-entrar. Si no hay borrador, cae a la propuesta confirmada
-    // (T15): si esta solicitud ya tiene cotización guardada, el panel no queda vacío.
-    obtenerCotizacionEnCurso(sol.id).then((cot) => {
-      if (cot.componentes.length || cot.tareas.length || cot.fuentes.length) {
-        if (cot.componentes.length) setComponentes(cot.componentes)
-        if (cot.tareas.length) setTareas(cot.tareas)
-        if (cot.fuentes.length) setFuentes(cot.fuentes)
-        return
-      }
-      obtenerPropuesta(sol.id).then((prop) => {
-        if (prop && prop.componentes.length) setComponentes(prop.componentes)
-      })
-    })
-  }
-
-  async function enviarMensaje(texto: string) {
-    if (!solicitudActual) return
-    const nuevos: Mensaje[] = [...mensajes, { rol: 'usuario', contenido: texto }]
-    if (tipo === 't2' && /internet|busca|referencia|opciones/i.test(texto)) {
-      nuevos.push({ rol: 'sistema', contenido: 'Javo está buscando referencias y opciones en internet…' })
-    }
-    setMensajes(nuevos)
-    setEnviando(true)
-
-    const r = await conversarConJavo({ solicitudId: solicitudActual.id, tipo, mensajes: nuevos })
-    setMensajes((prev) => [...prev, { rol: 'javo', contenido: r.texto }])
-    setEnviando(false)
-
-    // Javo propone los componentes (con su valor REAL del Drive y su origen) y cita
-    // sus fuentes (005). Pueblan el panel lateral del chat; el GP los confirma y, al
-    // "Generar propuesta", pasan a la cotización (spec 004). El backend persiste este
-    // estado como BORRADOR de la cotización (0009), así que sobrevive a un refresh: al
-    // re-entrar a la solicitud, `obtenerCotizacionEnCurso` (en iniciarChat) lo repuebla.
-    if (r.componentes.length) setComponentes(r.componentes)
-    if (r.tareas.length) setTareas(r.tareas)
-    if (r.fuentes.length) setFuentes(r.fuentes)
-  }
-
-  async function generarPropuesta() {
-    if (!solicitudActual) return
-    // PERSISTE lo que Javo armó en el chat (componentes + tareas) y muestra lo guardado.
-    // Si la conversación no propuso nada (componentes/tareas vacíos), intenta leer una
-    // propuesta previa. Antes esto solo hacía GET → 404 con datos reales y se perdía
-    // todo lo construido en el chat.
-    const guardada =
-      componentes.length || tareas.length
-        ? await guardarPropuesta(solicitudActual.id, tipo, componentes, tareas)
-        : await obtenerPropuesta(solicitudActual.id)
-    if (guardada) {
-      setComponentes(guardada.componentes)
-      setTareas(guardada.tareas)
-    }
-    irA('propuesta')
-  }
-
-  // Abre el DETALLE de una propuesta desde la lista del menú. Pide la cotización
-  // real (componentes + tareas) y arma un `solicitudActual` mínimo con los datos
-  // de la fila (id, asunto, remitente) para que los botones de export sigan
-  // funcionando; reutiliza la pantalla `'propuesta'` (la misma del chat).
-  async function abrirPropuestaDesdeLista(solicitudId: string) {
-    const fila = propuestas.find((p) => p.solicitudId === solicitudId)
-    const prop = await obtenerPropuesta(solicitudId)
-    setComponentes(prop ? prop.componentes : [])
-    setTareas(prop ? prop.tareas : [])
-    setSolicitudActual({
-      id: solicitudId,
-      remitente: fila?.remitente ?? '',
-      correo: '',
-      tiempo: '',
-      asunto: fila?.asunto ?? '',
-      tipo: 't1',
-      resumen: '',
-      puntos: [],
-      cuerpo: '',
-    })
-    irA('propuesta')
   }
 
   // undefined = aún resolviendo la sesión (evita flash al login en recarga).

@@ -12,7 +12,7 @@ Ningún test existente en `App.test.tsx` puede romperse.
 
 ## Tasks
 
-- [ ] 1. Preparar infraestructura de tests de contextos
+- [x] 1. Preparar infraestructura de tests de contextos
 
   - Instalar `fast-check` como dependencia de desarrollo en `apps/web`.
   - Crear el directorio `src/contextos/` (vacío por ahora).
@@ -23,9 +23,9 @@ Ningún test existente en `App.test.tsx` puede romperse.
 
 ## Iteración 1 — SesionContext
 
-- [ ] 2. Crear `SesionContext` con TDD
+- [x] 2. Crear `SesionContext` con TDD
 
-  - [ ] 2.1 🔴 Escribir test de inicialización de `SesionContext`
+  - [x] 2.1 🔴 Escribir test de inicialización de `SesionContext`
     - Crear `src/contextos/SesionContext.test.tsx`.
     - Test: el hook `useSesion()` lanzado fuera del provider arroja
       `"useSesion debe usarse dentro de SesionProvider"`.
@@ -34,7 +34,7 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - Ejecutar `npm test` y verificar que **falla** (el archivo no existe).
     - _Requisitos: 1.5, 6.2, 6.4_
 
-  - [ ] 2.2 🟢 Implementar `SesionContext.tsx`
+  - [x] 2.2 🟢 Implementar `SesionContext.tsx`
     - Crear `src/contextos/SesionContext.tsx`.
     - Definir la interfaz `SesionContextValor` con todos los campos del diseño.
     - Crear `SesionContext` con valor inicial `undefined`.
@@ -57,14 +57,14 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - **Property 1: White-label reactivo**
     - **Valida: Requisitos 1.4, 7.5**
 
-- [ ] 3. Integrar `SesionProvider` en el árbol y adaptar `App.tsx` (Iteración 1)
+- [x] 3. Integrar `SesionProvider` en el árbol y adaptar `App.tsx` (Iteración 1)
 
-  - [ ] 3.1 Envolver `App` con `SesionProvider` en `main.tsx`
+  - [x] 3.1 Envolver `App` con `SesionProvider` en `main.tsx`
     - Importar `SesionProvider` y envolverlo alrededor de `<App />` en
       `main.tsx`.
     - _Requisitos: 4.5_
 
-  - [ ] 3.2 Eliminar de `App.tsx` el estado y efectos migrados a `SesionContext`
+  - [x] 3.2 Eliminar de `App.tsx` el estado y efectos migrados a `SesionContext`
     - Borrar de `App.tsx`: `useState` de `sesion`, `empresa`, `pantalla`.
     - Borrar los tres `useEffect` de sesión, empresa y white-label.
     - Borrar las funciones `cerrarSesion` e `irA` (ahora viven en el provider).
@@ -72,7 +72,7 @@ Ningún test existente en `App.test.tsx` puede romperse.
       irA, cerrarSesion, setEmpresa } = useSesion()`.
     - _Requisitos: 4.1, 4.2, 4.3_
 
-  - [ ] 3.3 Checkpoint — `npm test` en verde tras Iteración 1
+  - [x] 3.3 Checkpoint — `npm test` en verde tras Iteración 1
     - Ejecutar `npm test` y verificar que los **12 tests de `App.test.tsx`** y
       los nuevos tests de `SesionContext.test.tsx` pasan sin errores.
     - Asegurar que no hay regresión en el comportamiento observable.
@@ -82,9 +82,9 @@ Ningún test existente en `App.test.tsx` puede romperse.
 
 ## Iteración 2 — SolicitudContext
 
-- [ ] 4. Crear `SolicitudContext` con TDD
+- [x] 4. Crear `SolicitudContext` con TDD
 
-  - [ ] 4.1 🔴 Escribir tests de inicialización de `SolicitudContext`
+  - [x] 4.1 🔴 Escribir tests de inicialización de `SolicitudContext`
     - Crear `src/contextos/SolicitudContext.test.tsx`.
     - Test: el hook `useSolicitud()` lanzado fuera del provider arroja
       `"useSolicitud debe usarse dentro de SolicitudProvider"`.
@@ -95,7 +95,7 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - Ejecutar `npm test` y verificar que **falla**.
     - _Requisitos: 2.6, 2.7, 6.2, 6.4_
 
-  - [ ] 4.2 🟢 Implementar `SolicitudContext.tsx`
+  - [x] 4.2 🟢 Implementar `SolicitudContext.tsx`
     - Crear `src/contextos/SolicitudContext.tsx`.
     - Definir la interfaz `SolicitudContextValor` con todos los campos del diseño.
     - Implementar `SolicitudProvider`: mover desde `App.tsx` los estados
@@ -133,13 +133,13 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - **Property 3: `enviarMensaje` agrega el mensaje y actualiza estado**
     - **Valida: Requisitos 2.4**
 
-- [ ] 5. Integrar `SolicitudProvider` y adaptar `App.tsx` (Iteración 2)
+- [x] 5. Integrar `SolicitudProvider` y adaptar `App.tsx` (Iteración 2)
 
-  - [ ] 5.1 Envolver con `SolicitudProvider` en `main.tsx`
+  - [x] 5.1 Envolver con `SolicitudProvider` en `main.tsx`
     - Añadir `SolicitudProvider` dentro de `SesionProvider` en `main.tsx`.
     - _Requisitos: 4.5_
 
-  - [ ] 5.2 Eliminar de `App.tsx` el estado y funciones migrados a `SolicitudContext`
+  - [x] 5.2 Eliminar de `App.tsx` el estado y funciones migrados a `SolicitudContext`
     - Borrar de `App.tsx`: `useState` de `solicitudActual`, `tipo`, `mensajes`,
       `componentes`, `tareas`, `fuentes`, `enviando`, `recursos`.
     - Borrar el `useEffect` de `obtenerRecursosDrive`.
@@ -148,7 +148,7 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - Reemplazar todas las referencias por `const { ... } = useSolicitud()`.
     - _Requisitos: 4.1, 4.2_
 
-  - [ ] 5.3 Checkpoint — `npm test` en verde tras Iteración 2
+  - [x] 5.3 Checkpoint — `npm test` en verde tras Iteración 2
     - Ejecutar `npm test` y verificar que los **12 tests de `App.test.tsx`** y
       todos los tests de los contextos pasan sin errores.
     - _Requisitos: 5.1, 5.4, 5.5_
@@ -157,9 +157,9 @@ Ningún test existente en `App.test.tsx` puede romperse.
 
 ## Iteración 3 — BandejaContext
 
-- [ ] 6. Crear `BandejaContext` con TDD
+- [x] 6. Crear `BandejaContext` con TDD
 
-  - [ ] 6.1 🔴 Escribir tests de inicialización de `BandejaContext`
+  - [x] 6.1 🔴 Escribir tests de inicialización de `BandejaContext`
     - Crear `src/contextos/BandejaContext.test.tsx`.
     - Test: el hook `useBandeja()` lanzado fuera del provider arroja
       `"useBandeja debe usarse dentro de BandejaProvider"`.
@@ -173,7 +173,7 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - Ejecutar `npm test` y verificar que **falla**.
     - _Requisitos: 3.1, 3.8, 6.2, 6.4_
 
-  - [ ] 6.2 🟢 Implementar `BandejaContext.tsx`
+  - [x] 6.2 🟢 Implementar `BandejaContext.tsx`
     - Crear `src/contextos/BandejaContext.tsx`.
     - Definir la interfaz `BandejaContextValor` con todos los campos del diseño.
     - Implementar `BandejaProvider`: mover desde `App.tsx` los estados de
@@ -225,15 +225,15 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - **Property 9: Cambio de empresa reinicia bandeja y recarga datos del nuevo tenant**
     - **Valida: Requisitos 7.4**
 
-- [ ] 7. Integrar `BandejaProvider` y reducir `App.tsx` a orquestador (Iteración 3)
+- [x] 7. Integrar `BandejaProvider` y reducir `App.tsx` a orquestador (Iteración 3)
 
-  - [ ] 7.1 Insertar `BandejaProvider` en `main.tsx` en el orden correcto
+  - [x] 7.1 Insertar `BandejaProvider` en `main.tsx` en el orden correcto
     - Añadir `BandejaProvider` entre `SesionProvider` y `SolicitudProvider` en
       `main.tsx`, dejando el árbol `SesionProvider → BandejaProvider →
       SolicitudProvider → App`.
     - _Requisitos: 4.5_
 
-  - [ ] 7.2 Eliminar de `App.tsx` el estado y efectos migrados a `BandejaContext`
+  - [x] 7.2 Eliminar de `App.tsx` el estado y efectos migrados a `BandejaContext`
     - Borrar de `App.tsx`: `useState` de `solicitudes`, `cargandoSolicitudes`,
       `errorSolicitudes`, `reintentoSolicitudes`, `propuestas`,
       `cargandoPropuestas`, `errorPropuestas`, `reintentoPropuestas`,
@@ -267,7 +267,7 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - **Property 8: Navegación conserva el estado de los contextos**
     - **Valida: Requisitos 7.2**
 
-- [ ] 8. Checkpoint final — `npm test` en verde tras Iteración 3
+- [x] 8. Checkpoint final — `npm test` en verde tras Iteración 3
   - Ejecutar `npm test` y verificar que los **12 tests de `App.test.tsx`** y
     todos los tests de los tres contextos pasan sin errores.
   - Confirmar que `App.tsx` tiene menos de 150 líneas (sin imports).

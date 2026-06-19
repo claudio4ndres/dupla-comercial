@@ -19,6 +19,22 @@ vi.mock('./supabase/cliente', () => ({
 
 import { supabase } from './supabase/cliente'
 import App from './App'
+import { SesionProvider } from './contextos/SesionContext'
+import { SolicitudProvider } from './contextos/SolicitudContext'
+import { BandejaProvider } from './contextos/BandejaContext'
+
+/** Helper: renderiza App envuelto en los tres providers (requerido tras la extracción de contextos). */
+function renderApp(props?: { onNavegar?: (url: string) => void }) {
+  return render(
+    <SesionProvider>
+      <SolicitudProvider>
+        <BandejaProvider>
+          <App {...props} />
+        </BandejaProvider>
+      </SolicitudProvider>
+    </SesionProvider>,
+  )
+}
 
 // Alias tipado para acceder a los mocks sin castings repetitivos.
 const mockAuth = supabase.auth as unknown as {
@@ -88,13 +104,13 @@ describe('App (arnés)', () => {
   })
 
   it('arranca pidiendo iniciar sesión', async () => {
-    render(<App />)
+    renderApp()
     expect(await screen.findByRole('button', { name: /entrar/i })).toBeInTheDocument()
   })
 
   it('tras iniciar sesión, muestra el onboarding de Configuración (no la bandeja)', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
     await entrar(user)
     // El landing post-login es el onboarding: "Prepara tu espacio".
     expect(await screen.findByRole('heading', { name: /Prepara tu espacio/i })).toBeInTheDocument()
@@ -103,24 +119,24 @@ describe('App (arnés)', () => {
 
   it('desde el onboarding, "Continuar a la bandeja" lleva a la bandeja de solicitudes', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
     await entrarABandeja(user)
     expect(screen.getByRole('heading', { name: /Bandeja de solicitudes/i })).toBeInTheDocument()
   })
 
   it('mantiene la sesión tras recargar (no rebota al login)', async () => {
     const user = userEvent.setup()
-    const { unmount } = render(<App />)
+    const { unmount } = renderApp()
     await entrarABandeja(user)
     expect(screen.getByRole('heading', { name: /Bandeja de solicitudes/i })).toBeInTheDocument()
 
     // Simula un refresh: ahora getSession devuelve sesión activa (como haría el
     // cliente real de Supabase que persiste la sesión en localStorage).
-    mockAuth.getSession.mockResolvedValueOnce({
+    mockAuth.getSession.mockResolvedValue({
       data: { session: { user: { email: 'javier@capsulab.cl' }, access_token: 'tok' } },
     })
     unmount()
-    render(<App />)
+    renderApp()
     // Supabase notifica la sesión ya activa al montar.
     await act(async () => {
       authStateCallback?.('SIGNED_IN', { user: { email: 'javier@capsulab.cl' } })
@@ -133,7 +149,7 @@ describe('App (arnés)', () => {
 
   it('muestra la empresa activa (multi-tenant) en la barra lateral', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
     await entrar(user)
     // "Capsulab" aparece en el selector de empresa y en el breadcrumb.
     expect(screen.getAllByText(/Capsulab/i).length).toBeGreaterThan(0)
@@ -177,7 +193,7 @@ describe('App (arnés)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderApp()
     await entrarABandeja(user)
 
     // Las solicitudes del backend aparecen en la bandeja (llegada asíncrona).
@@ -209,7 +225,7 @@ describe('App (arnés)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     try {
-      render(<App />)
+      renderApp()
       await entrarABandeja(user)
 
       // 1ª carga al entrar a la bandeja (carga inmediata del efecto).
@@ -259,7 +275,7 @@ describe('App (arnés)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderApp()
     await entrarABandeja(user)
 
     // Los correos ya ingeridos SIGUEN visibles aunque el estado sea 'reconectar'.
@@ -299,7 +315,7 @@ describe('App (arnés)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderApp()
     await entrarABandeja(user)
 
     // El fallo se ve como banner, no como vacío silencioso.
@@ -313,7 +329,7 @@ describe('App (arnés)', () => {
 
   it('en la bandeja, ofrece conectar un proveedor de correo', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
     await entrarABandeja(user)
     // Sin proveedor conectado (estado del backend = null): botones de proveedor.
     expect(screen.getByRole('button', { name: /gmail/i })).toBeInTheDocument()
@@ -331,7 +347,7 @@ describe('App (arnés)', () => {
     vi.stubGlobal('fetch', fetchMock)
     const navegar = vi.fn()
 
-    render(<App onNavegar={navegar} />)
+    renderApp({ onNavegar: navegar })
     await entrarABandeja(user)
     await user.click(screen.getByRole('button', { name: /gmail/i }))
 
@@ -380,7 +396,7 @@ describe('App (arnés)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderApp()
     await entrarABandeja(user)
 
     // Abre la 212CH desde la bandeja → elige Tipo 1 → entra al chat.
@@ -431,7 +447,7 @@ describe('App (arnés)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderApp()
     await entrar(user)
 
     // Navega a la lista de propuestas desde el menú lateral.
@@ -461,7 +477,7 @@ describe('App (arnés)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderApp()
     await entrar(user)
 
     await user.click(screen.getByText('Tareas'))
@@ -512,7 +528,7 @@ describe('App (arnés)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderApp()
     await entrarABandeja(user)
     await user.click(await screen.findByText(/Carolina Herrera/i))
     await user.click(screen.getByText(/Tipo 1 · Cotización concreta/i))
@@ -583,7 +599,7 @@ describe('App (arnés)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderApp()
     await entrarABandeja(user)
     await user.click(await screen.findByText(/Carolina Herrera/i))
     // Entra al chat: SIN enviar ningún mensaje, el panel ya trae la cotización persistida.
