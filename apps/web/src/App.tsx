@@ -12,16 +12,14 @@ import { Login } from './componentes/Login'
 import { BannerError, CargandoLista } from './componentes/EstadoLista'
 import {
   desconectarCorreo,
-  ESTADO_DESCONECTADO,
   iniciarConexionGmail,
 } from './api/integraciones'
 import { descargarCotizacionExcel, descargarCotizacionPpt } from './api/exportaciones'
-import { EMPRESAS } from './datosMock'
+
 import { useSesion } from './contextos/SesionContext'
 import { useSolicitud } from './contextos/SolicitudContext'
 import { useBandeja } from './contextos/BandejaContext'
 import type {
-  Empresa,
   Pantalla,
   ProveedorCorreo,
 } from './tipos'
@@ -33,7 +31,7 @@ interface AppProps {
 
 function App({ onNavegar = (url: string) => window.location.assign(url) }: AppProps = {}) {
   // Estado de sesión, empresa y navegación provienen del contexto.
-  const { sesion, empresa, setEmpresa, cerrarSesion, pantalla, irA: irAContexto } = useSesion()
+  const { sesion, empresa, cerrarSesion, pantalla, irA: irAContexto } = useSesion()
 
   // Estado de la solicitud activa, chat y cotización provienen del contexto.
   const {
@@ -82,11 +80,6 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     void correo
   }
 
-  function cambiarEmpresa(e: Empresa) {
-    setEmpresa(e)
-    irA('inbox')
-  }
-
   async function conectarProveedor(p: ProveedorCorreo) {
     if (p !== 'gmail') return
     try {
@@ -112,9 +105,7 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
   return (
     <div className="app">
       <Sidebar
-        empresas={EMPRESAS}
-        empresaActiva={empresa}
-        onCambiarEmpresa={cambiarEmpresa}
+        empresa={empresa}
         pantalla={pantalla}
         onIrA={irA}
         conteoBandeja={solicitudes.length}

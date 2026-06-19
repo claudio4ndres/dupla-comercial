@@ -92,7 +92,14 @@ describe('App (arnés)', () => {
     })
     // Al montar, la bandeja consulta GET /integraciones/correo. Por defecto la
     // dejamos "sin conectar" para que aparezcan los botones de proveedor.
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta(ESTADO_DESCONECTADO)))
+    // También GET /empresa responde con Capsulab (empresa del piloto).
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const u = String(input)
+      if (u.includes('/empresa')) {
+        return Promise.resolve(respuesta({ id: 'e1', nombre: 'Capsulab', color_marca: '#F04E37', plan: 'piloto' }))
+      }
+      return Promise.resolve(respuesta(ESTADO_DESCONECTADO))
+    }))
   })
 
   afterEach(() => {

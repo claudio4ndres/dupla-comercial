@@ -1,10 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { Empresa, Pantalla } from '../tipos'
 
 interface Props {
-  empresas: Empresa[]
-  empresaActiva: Empresa
-  onCambiarEmpresa: (empresa: Empresa) => void
+  /** Empresa activa (viene del backend vía SesionContext). */
+  empresa: Empresa
   pantalla: Pantalla
   onIrA: (pantalla: Pantalla) => void
   conteoBandeja: number
@@ -55,70 +54,22 @@ const NAV: { id: Pantalla; etiqueta: string; icono: ReactNode }[] = [
 ]
 
 export function Sidebar({
-  empresas,
-  empresaActiva,
-  onCambiarEmpresa,
+  empresa,
   pantalla,
   onIrA,
   conteoBandeja,
   menuAbierto,
 }: Props) {
-  const [menuEmpresas, setMenuEmpresas] = useState(false)
-
   return (
     <aside className={'sidebar' + (menuAbierto ? ' show' : '')}>
-      <div className="ws" onClick={() => setMenuEmpresas((v) => !v)}>
-        <div className="ws-mark" style={{ background: empresaActiva.color }}>
-          {empresaActiva.marca}
+      <div className="ws">
+        <div className="ws-mark" style={{ background: empresa.color }}>
+          {empresa.marca}
         </div>
         <div>
-          <div className="ws-name">{empresaActiva.nombre}</div>
-          <div className="ws-tag">{empresaActiva.etiqueta ?? 'Plan piloto · BTL'}</div>
+          <div className="ws-name">{empresa.nombre}</div>
+          <div className="ws-tag">{empresa.etiqueta ?? 'Plan piloto · BTL'}</div>
         </div>
-        <div className="ws-caret">▾</div>
-      </div>
-
-      <div className={'ws-menu' + (menuEmpresas ? ' open' : '')}>
-        {empresas.map((e) => {
-          const activa = e.nombre === empresaActiva.nombre
-          return (
-            <div
-              key={e.nombre}
-              className="ws-item"
-              onClick={() => {
-                onCambiarEmpresa(e)
-                setMenuEmpresas(false)
-              }}
-            >
-              <span className="dot" style={{ background: e.color }}>
-                {e.marca}
-              </span>
-              {e.nombre}
-              {activa && <span style={{ marginLeft: 'auto', fontSize: 11, color: '#a39b87' }}>activo</span>}
-            </div>
-          )
-        })}
-        {/* Alta de empresa: aún no hay flujo de onboarding self-service, así que el
-            control va DESHABILITADO (no debe parecer funcional). Se habilitará cuando
-            exista el alta de empresa. */}
-        <button
-          type="button"
-          className="ws-item add"
-          disabled
-          title="Próximamente"
-          style={{
-            width: '100%',
-            textAlign: 'left',
-            background: 'transparent',
-            border: 'none',
-            font: 'inherit',
-            color: 'inherit',
-            opacity: 0.5,
-            cursor: 'not-allowed',
-          }}
-        >
-          ＋ Nueva empresa
-        </button>
       </div>
 
       <div className="nav-label">Operación</div>

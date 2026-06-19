@@ -4,8 +4,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../supabase/cliente'
 import { obtenerEmpresa } from '../api/empresa'
-import { EMPRESAS } from '../datosMock'
 import type { Empresa, Pantalla, Sesion } from '../tipos'
+
+/** Valor por defecto neutro mientras el backend aún no responde con la empresa real. */
+const EMPRESA_POR_DEFECTO: Empresa = { nombre: '', color: '#cccccc', marca: '?', etiqueta: '' }
 
 // ── Interfaz del valor expuesto ──────────────────────────────────────────────
 
@@ -29,7 +31,7 @@ const SesionContext = createContext<SesionContextValor | undefined>(undefined)
 export function SesionProvider({ children }: { children: ReactNode }) {
   // Estado de autenticación: undefined = aún no sé, null = sin sesión
   const [sesion, setSesion] = useState<Sesion | null | undefined>(undefined)
-  const [empresa, setEmpresa] = useState<Empresa>(EMPRESAS[0])
+  const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_POR_DEFECTO)
   // Landing post-login: configuración (onboarding de conectores)
   const [pantalla, setPantalla] = useState<Pantalla>('configuracion')
 
