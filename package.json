@@ -2,8 +2,8 @@
   "name": "dupla-comercial",
   "private": true,
   "scripts": {
-    "back": "cd apps/api && (lsof -ti tcp:8000 | xargs kill -9 2>/dev/null; sleep 0.3) && env -u ANTHROPIC_API_KEY .venv/bin/uvicorn app.main:app --port 8000",
-    "back:demo": "cd apps/api && (lsof -ti tcp:8000 | xargs kill -9 2>/dev/null; sleep 0.3) && env -u ANTHROPIC_API_KEY .venv/bin/uvicorn app.demo_gmail_real:app --port 8000",
+    "back": "cd apps/api && (lsof -ti tcp:8000 | xargs kill -9 2>/dev/null; sleep 0.3) && env -u ANTHROPIC_API_KEY .venv/bin/uvicorn app.main:app --port 8000 --loop asyncio",
+    "back:demo": "cd apps/api && (lsof -ti tcp:8000 | xargs kill -9 2>/dev/null; sleep 0.3) && env -u ANTHROPIC_API_KEY .venv/bin/uvicorn app.demo_gmail_real:app --port 8000 --loop asyncio",
     "back:sync": "cd apps/api && uv sync",
     "front": "(lsof -ti tcp:5174 | xargs kill -9 2>/dev/null; sleep 0.3) && npm --prefix apps/web run dev"
   }
