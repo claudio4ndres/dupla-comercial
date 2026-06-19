@@ -199,7 +199,7 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - **Property 4: Carga reactiva de solicitudes para cualquier proveedor conectado**
     - **Valida: Requisitos 3.2, 7.3**
 
-  - [ ]* 6.4 Escribir property test — Property 5: bandera de error ante cualquier fallo
+  - [~] 6.4 Escribir property test — Property 5: bandera de error ante cualquier fallo
     - En `BandejaContext.test.tsx`, agregar test con `fast-check`.
     - Para cada una de las tres cargas, si la función rechaza con un error, la
       bandera de error asociada pasa a `true` y las otras dos no se ven afectadas.
@@ -258,7 +258,7 @@ Ningún test existente en `App.test.tsx` puede romperse.
     - **Property 7: Providers aislados — montaje independiente**
     - **Valida: Requisitos 6.1, 6.3**
 
-  - [ ]* 7.4 Escribir property test — Property 8: navegación conserva estado del contexto
+  - [~] 7.4 Escribir property test — Property 8: navegación conserva estado del contexto
     - En `SolicitudContext.test.tsx`, agregar test con `fast-check`.
     - Para cualquier solicitud activa con componentes y mensajes cargados, al
       simular el cambio de pantalla de `'chat'` a `'propuesta'` (y volver), los
