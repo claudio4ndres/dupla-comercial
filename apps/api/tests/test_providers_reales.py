@@ -71,8 +71,8 @@ def test_integraciones_usuario_usa_el_jwt_del_header():
     # filtra por su empresa, regla de oro #2).
     repo = obtener_repositorio_integraciones(authorization="Bearer jwt-del-usuario")
     assert isinstance(repo, RepositorioIntegracionesSupabase)
-    assert repo._key == "anon-publica"
-    assert repo._token == "jwt-del-usuario"
+    assert repo._anon == "anon-publica"
+    assert repo._jwt == "jwt-del-usuario"
 
 
 def test_integraciones_usuario_sin_token_es_401():
@@ -87,8 +87,8 @@ def test_integraciones_servicio_usa_service_role_sin_jwt():
     # Poller y callback OAuth: service role como apikey Y bearer (salta la RLS).
     repo = obtener_repositorio_integraciones_servicio()
     assert isinstance(repo, RepositorioIntegracionesSupabase)
-    assert repo._key == "service-role-secreta"
-    assert repo._token == "service-role-secreta"
+    assert repo._anon == "service-role-secreta"
+    assert repo._jwt == "service-role-secreta"
 
 
 def test_solicitudes_servicio_usa_service_role_sin_jwt():

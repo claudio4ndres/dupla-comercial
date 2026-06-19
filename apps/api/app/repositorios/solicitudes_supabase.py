@@ -12,44 +12,13 @@ from uuid import UUID
 
 import httpx
 
+from app.repositorios.cliente_postgrest import ClientePostgREST
 from app.repositorios.solicitudes import Solicitud
 from app.servicios.gmail import MensajeCorreo
 
 
-class RepositorioSolicitudesSupabase:
+class RepositorioSolicitudesSupabase(ClientePostgREST):
     """Repositorio `RepositorioSolicitudes` respaldado por PostgREST de Supabase."""
-
-    def __init__(
-        self,
-        base_url: str,
-        anon_key: str,
-        jwt: str,
-        *,
-        cliente: httpx.AsyncClient | None = None,
-    ):
-        self._base = base_url.rstrip("/") + "/rest/v1"
-        self._anon = anon_key
-        self._jwt = jwt
-        self._cliente = cliente  # inyectable para tests; en prod se crea por llamada
-
-    def _headers(self, extra: dict | None = None) -> dict:
-        # `apikey` identifica al proyecto; `Authorization` lleva el JWT del usuario,
-        # que es lo que activa la RLS a nombre de SU empresa.
-        cabeceras = {
-            "apikey": self._anon,
-            "Authorization": f"Bearer {self._jwt}",
-            "Content-Type": "application/json",
-        }
-        if extra:
-            cabeceras.update(extra)
-        return cabeceras
-
-    async def _peticion(self, metodo: str, ruta: str, **kw) -> httpx.Response:
-        url = self._base + ruta
-        if self._cliente is not None:
-            return await self._cliente.request(metodo, url, **kw)
-        async with httpx.AsyncClient() as cliente:
-            return await cliente.request(metodo, url, **kw)
 
     async def obtener(self, solicitud_id: UUID, empresa_id: UUID) -> Solicitud | None:
         # La RLS ya restringe a la empresa del JWT; no hace falta filtrar por

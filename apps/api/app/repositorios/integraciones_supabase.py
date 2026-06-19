@@ -15,10 +15,11 @@ from uuid import UUID
 
 import httpx
 
+from app.repositorios.cliente_postgrest import ClientePostgREST
 from app.repositorios.integraciones import Integracion
 
 
-class RepositorioIntegracionesSupabase:
+class RepositorioIntegracionesSupabase(ClientePostgREST):
     """Repositorio `RepositorioIntegraciones` respaldado por PostgREST de Supabase."""
 
     def __init__(
@@ -29,27 +30,8 @@ class RepositorioIntegracionesSupabase:
         *,
         cliente: httpx.AsyncClient | None = None,
     ):
-        self._base = base_url.rstrip("/") + "/rest/v1"
-        self._key = key      # apikey del proyecto (anon o service role)
-        self._token = token  # bearer: JWT del usuario o service role
-        self._cliente = cliente
-
-    def _headers(self, extra: dict | None = None) -> dict:
-        cabeceras = {
-            "apikey": self._key,
-            "Authorization": f"Bearer {self._token}",
-            "Content-Type": "application/json",
-        }
-        if extra:
-            cabeceras.update(extra)
-        return cabeceras
-
-    async def _peticion(self, metodo: str, ruta: str, **kw) -> httpx.Response:
-        url = self._base + ruta
-        if self._cliente is not None:
-            return await self._cliente.request(metodo, url, **kw)
-        async with httpx.AsyncClient() as cliente:
-            return await cliente.request(metodo, url, **kw)
+        # `key` puede ser anon_key o service_role_key; `token` puede ser JWT o service role.
+        super().__init__(base_url, key, token, cliente=cliente)
 
     @staticmethod
     def _a_integracion(fila: dict) -> Integracion:

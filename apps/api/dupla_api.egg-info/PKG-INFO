@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: dupla-api
+Version: 0.1.0
+Summary: Backend FastAPI de Dupla Comercial
+Requires-Python: >=3.12
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn[standard]>=0.30
+Requires-Dist: anthropic>=0.40
+Requires-Dist: pydantic-settings>=2.5
+Requires-Dist: httpx>=0.27
+Requires-Dist: pyjwt>=2.9
+Requires-Dist: cryptography>=48.0.0
+Requires-Dist: openpyxl>=3.1.5
+Requires-Dist: python-pptx>=1.0.2
+Requires-Dist: google-cloud-secret-manager>=2.20

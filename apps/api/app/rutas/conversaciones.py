@@ -11,6 +11,7 @@ RLS y la conversación se aísla por empresa, así que la empresa se resuelve de
 del usuario (`obtener_empresa_actual`). Sin token → 401. Si el LLM cae → 502 (el front
 cae a su respuesta offline).
 """
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -46,6 +47,8 @@ class _EntradaIniciar(BaseModel):
 class _RespuestaIniciar(BaseModel):
     """Respuesta del endpoint /iniciar: solo el texto del saludo."""
     texto: str
+
+_LOG = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversaciones", tags=["conversaciones"])
 
@@ -164,9 +167,16 @@ async def responder(
         if respuesta.texto:
             nuevos.append({"rol": "javo", "contenido": respuesta.texto})
         if nuevos:
-            await repo_conversaciones.guardar_turnos(
-                solicitud, empresa_id, entrada.tipo, nuevos
-            )
+            try:
+                await repo_conversaciones.guardar_turnos(
+                    solicitud, empresa_id, entrada.tipo, nuevos
+                )
+            except Exception:
+                _LOG.exception(
+                    "Fallo best-effort al persistir turnos (solicitud=%s, empresa=%s)",
+                    solicitud,
+                    empresa_id,
+                )
 
         # Persiste el BORRADOR de la cotización (0009): si Javo propuso componentes/
         # tareas o citó fuentes EN ESTE TURNO, guarda ese estado junto a la conversación
@@ -174,16 +184,23 @@ async def responder(
         # texto (no propuso nada), NO se pisa el borrador previo: la cotización en curso
         # se conserva (evita el bug de que el panel se vacíe al re-conversar).
         if respuesta.componentes or respuesta.tareas or respuesta.fuentes:
-            await repo_conversaciones.guardar_borrador(
-                solicitud,
-                empresa_id,
-                entrada.tipo,
-                {
-                    "componentes": [c.model_dump() for c in respuesta.componentes],
-                    "tareas": [t.model_dump() for t in respuesta.tareas],
-                    "fuentes": [f.model_dump() for f in respuesta.fuentes],
-                },
-            )
+            try:
+                await repo_conversaciones.guardar_borrador(
+                    solicitud,
+                    empresa_id,
+                    entrada.tipo,
+                    {
+                        "componentes": [c.model_dump() for c in respuesta.componentes],
+                        "tareas": [t.model_dump() for t in respuesta.tareas],
+                        "fuentes": [f.model_dump() for f in respuesta.fuentes],
+                    },
+                )
+            except Exception:
+                _LOG.exception(
+                    "Fallo best-effort al persistir borrador (solicitud=%s, empresa=%s)",
+                    solicitud,
+                    empresa_id,
+                )
 
     return respuesta
 

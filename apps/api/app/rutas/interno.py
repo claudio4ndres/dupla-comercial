@@ -170,14 +170,18 @@ async def reprocesar_correo(
             )
             revisadas += res.revisadas
             reclasificadas += res.reclasificadas
-        except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
-            _LOG.exception(
-                "Reproceso: la empresa %s falló; se sigue con las demás.",
+        except ErrorAutenticacionGmail:
+            _LOG.warning(
+                "Reproceso: la empresa %s tiene la sesión de Gmail caída; se marca 'reconectar'.",
                 integracion.empresa_id,
             )
-            # Sólo la fila gmail (#5): el reproceso es gmail-only.
             await repo_integraciones.marcar_estado(
                 integracion.empresa_id, "reconectar", "gmail"
+            )
+        except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
+            _LOG.exception(
+                "Reproceso: la empresa %s falló por un error NO-auth; se aísla SIN marcar 'reconectar' (credenciales sanas).",
+                integracion.empresa_id,
             )
     return ResumenReproceso(revisadas=revisadas, reclasificadas=reclasificadas)
 
