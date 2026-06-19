@@ -19,6 +19,7 @@ import { descargarCotizacionExcel, descargarCotizacionPpt } from './api/exportac
 import { useSesion } from './contextos/SesionContext'
 import { useSolicitud } from './contextos/SolicitudContext'
 import { useBandeja } from './contextos/BandejaContext'
+import { useSincronizarRuta } from './hooks/useSincronizarRuta'
 import type {
   Pantalla,
   ProveedorCorreo,
@@ -30,6 +31,9 @@ interface AppProps {
 }
 
 function App({ onNavegar = (url: string) => window.location.assign(url) }: AppProps = {}) {
+  // Sincroniza el estado `pantalla` con la URL del navegador (deep links + botón atrás).
+  useSincronizarRuta()
+
   // Estado de sesión, empresa y navegación provienen del contexto.
   const { sesion, empresa, cerrarSesion, pantalla, irA: irAContexto } = useSesion()
 
