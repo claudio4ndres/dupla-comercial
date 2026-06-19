@@ -4,7 +4,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { conversarConJavo } from '../api/javo'
 import { obtenerRecursosDrive } from '../api/recursos'
-import { obtenerCotizacionEnCurso, obtenerHistorialConversacion } from '../api/conversaciones'
+import { iniciarConversacion, obtenerCotizacionEnCurso, obtenerHistorialConversacion } from '../api/conversaciones'
 import { guardarPropuesta, obtenerPropuesta } from '../api/propuestas'
 import { useSesion } from './SesionContext'
 import type { RecursoDrive } from '../datosMock'
@@ -43,24 +43,6 @@ export interface SolicitudContextValor {
 
 const SolicitudContext = createContext<SolicitudContextValor | undefined>(undefined)
 
-// ── Primer mensaje de Javo al iniciar la conversación, según el tipo ─────────
-
-function introJavo(solicitud: Solicitud, tipo: TipoConfirmado): string {
-  if (tipo === 't1') {
-    return (
-      `¡Hola! 👋 Leí el correo de ${solicitud.remitente}. Es una cotización concreta: ` +
-      `${solicitud.resumen.toLowerCase()}\n\n` +
-      'Vamos armando los componentes. ¿Confirmas que cotizamos catering, promotores, producto y ' +
-      'uniforme para 5 horas diarias? ¿Cuántos días dura la activación?'
-    )
-  }
-  return (
-    `¡Hola! 👋 Leí el correo de ${solicitud.remitente}. Es un pedido de ideas, sin brief cerrado todavía.\n\n` +
-    'Te tiro algunos conceptos para partir. Si quieres, puedo buscar referencias y opciones en ' +
-    'internet — solo dime "busca en internet".'
-  )
-}
-
 // ── Provider ─────────────────────────────────────────────────────────────────
 
 export function SolicitudProvider({ children }: { children: ReactNode }) {
@@ -91,7 +73,7 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
     irA('detail')
   }
 
-  // ─── Iniciar chat: limpiar estado, intro de Javo, rehidratar ──────────────
+  // ─── Iniciar chat: limpiar estado, intro de Javo desde backend, rehidratar ──
 
   function iniciarChat(t: TipoConfirmado) {
     if (!solicitudActual) return
@@ -100,8 +82,20 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
     setComponentes([])
     setTareas([])
     setFuentes([])
-    setMensajes([{ rol: 'javo', contenido: introJavo(sol, t) }])
+    setMensajes([])
+    setEnviando(true)
     irA('chat')
+
+    // Pide el saludo inicial de Javo al backend
+    iniciarConversacion(sol.id, t)
+      .then((r) => {
+        setMensajes([{ rol: 'javo', contenido: r.texto }])
+      })
+      .catch(() => {
+        // Fallback: si el backend falla, mensaje genérico
+        setMensajes([{ rol: 'javo', contenido: '¡Hola! 👋 Vamos a trabajar en esta solicitud.' }])
+      })
+      .finally(() => setEnviando(false))
 
     // Rehidrata el hilo persistido (T14)
     obtenerHistorialConversacion(sol.id).then((historial) => {

@@ -25,6 +25,7 @@ class ComponentePropuesta(BaseModel):
     nombre: str
     detalle: str | None = None
     proveedor: str | None = None
+    origen: str | None = None  # archivo del Drive de donde se tomó el valor
     cantidad: int = 1
     dias: int = 1
     valor_unitario: float = 0  # tarifa POR DÍA por unidad (T17); costo = cant×días×valor

@@ -15,6 +15,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from pydantic import BaseModel
+
 from app.dependencias import (
     obtener_cliente_anthropic,
     obtener_cliente_drive_conversacion,
@@ -22,14 +24,28 @@ from app.dependencias import (
     obtener_proveedor_busqueda,
     obtener_repositorio_catalogo,
     obtener_repositorio_conversaciones,
+    obtener_repositorio_solicitudes,
 )
 from app.esquemas import (
     CotizacionBorrador,
     EntradaConversacion,
     MensajeConversacion,
     RespuestaConversacion,
+    TipoConversacion,
 )
 from app.servicios.javo import responder_javo
+
+
+# ── Esquemas del endpoint /iniciar ────────────────────────────────────────────
+
+class _EntradaIniciar(BaseModel):
+    """Cuerpo del POST /conversaciones/{solicitud_id}/iniciar."""
+    tipo: TipoConversacion
+
+
+class _RespuestaIniciar(BaseModel):
+    """Respuesta del endpoint /iniciar: solo el texto del saludo."""
+    texto: str
 
 router = APIRouter(prefix="/conversaciones", tags=["conversaciones"])
 
@@ -66,6 +82,42 @@ async def cotizacion_en_curso(
     if not borrador:
         return CotizacionBorrador()
     return CotizacionBorrador(**borrador)
+
+
+@router.post("/{solicitud_id}/iniciar", response_model=_RespuestaIniciar)
+async def iniciar(
+    solicitud_id: UUID,
+    entrada: _EntradaIniciar,
+    repo_solicitudes=Depends(obtener_repositorio_solicitudes),
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+) -> _RespuestaIniciar:
+    """Genera el saludo inicial de Javo para una solicitud y tipo dados.
+
+    Lee el remitente y resumen de la solicitud desde Supabase y construye el
+    primer mensaje de Javo (misma lógica que tenía `introJavo` en el frontend).
+    NO persiste el mensaje aún — eso ocurre cuando se responde el primer mensaje.
+    """
+    solicitud = await repo_solicitudes.obtener(solicitud_id, empresa_id)
+    if solicitud is None:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+
+    remitente = solicitud.remitente
+    resumen = solicitud.resumen or ""
+
+    if entrada.tipo == "t1":
+        texto = (
+            f"¡Hola! 👋 Leí el correo de {remitente}. "
+            f"Es una cotización concreta: {resumen}\n\n"
+            "Vamos armando los componentes..."
+        )
+    else:
+        texto = (
+            f"¡Hola! 👋 Leí el correo de {remitente}. "
+            "Es un pedido de ideas, sin brief cerrado todavía.\n\n"
+            "Te tiro algunos conceptos..."
+        )
+
+    return _RespuestaIniciar(texto=texto)
 
 
 @router.post("/responder", response_model=RespuestaConversacion)

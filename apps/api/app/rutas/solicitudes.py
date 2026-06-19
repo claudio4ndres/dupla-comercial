@@ -163,6 +163,7 @@ async def crear_propuesta(
             nombre=c.nombre,
             detalle=c.detalle,
             proveedor=c.proveedor,
+            origen=c.origen,
             cantidad=c.cantidad,
             dias=c.dias or 1,
             valor_unitario=c.valor_unitario or 0,

@@ -6,9 +6,28 @@
 // cae, devuelve [] y el chat parte desde el saludo de Javo.
 
 import { cabecerasAuthAsync } from './auth'
-import type { Componente, Fuente, Mensaje, Tarea } from '../tipos'
+import type { Componente, Fuente, Mensaje, Tarea, TipoConfirmado } from '../tipos'
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
+
+// ── Iniciar conversación (saludo de Javo desde el backend) ───────────────────
+
+/** Llama al backend para generar el saludo inicial de Javo según el tipo. */
+export async function iniciarConversacion(
+  solicitudId: string,
+  tipo: TipoConfirmado,
+): Promise<{ texto: string }> {
+  const r = await fetch(`${API_BASE}/conversaciones/${solicitudId}/iniciar`, {
+    method: 'POST',
+    headers: {
+      ...(await cabecerasAuthAsync()),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ tipo }),
+  })
+  if (!r.ok) throw new Error(`backend respondió ${r.status}`)
+  return (await r.json()) as { texto: string }
+}
 
 /** Lee el hilo persistido de una solicitud. [] si no hay o si el backend no responde. */
 export async function obtenerHistorialConversacion(solicitudId: string): Promise<Mensaje[]> {

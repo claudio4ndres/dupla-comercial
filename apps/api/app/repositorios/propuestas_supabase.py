@@ -27,7 +27,7 @@ from app.repositorios.propuestas import (
 # repo conoce la empresa por el argumento.
 _SELECT = (
     "id,total,estado,"
-    "componentes_propuesta(nombre,detalle,proveedor,cantidad,dias,valor_unitario),"
+    "componentes_propuesta(nombre,detalle,proveedor,origen,cantidad,dias,valor_unitario),"
     "tareas(nombre,grupo,responsable,vencimiento),"
     "conversaciones!inner(solicitud_id)"
 )
@@ -189,6 +189,7 @@ class RepositorioPropuestasSupabase:
                         "nombre": c.nombre,
                         "detalle": c.detalle,
                         "proveedor": c.proveedor,
+                        "origen": c.origen,
                         "cantidad": c.cantidad,
                         "dias": c.dias,
                         "valor_unitario": c.valor_unitario,
