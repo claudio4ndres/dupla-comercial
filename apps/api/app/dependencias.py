@@ -8,9 +8,11 @@ Anthropic real ya está cableado (T7a): se construye con la key de `Settings`.
 from functools import lru_cache
 from uuid import UUID
 
+import httpx
 from fastapi import Depends, Header, HTTPException, status
 
 from app.config import obtener_settings
+from app.http_pool import cliente_http_compartido
 from app.repositorios.estado_oauth import AlmacenEstadoOAuthEnMemoria
 from app.repositorios.catalogo_supabase import RepositorioCatalogoSupabase
 from app.repositorios.conversaciones_supabase import RepositorioConversacionesSupabase
@@ -37,6 +39,13 @@ from app.servicios.secretos import (
 )
 
 
+def obtener_cliente_http() -> httpx.AsyncClient:
+    """Cliente HTTP compartido con connection pooling (HTTP/2). Los repos Supabase lo
+    reciben para reutilizar conexiones TCP. En tests se sobrescribe con uno local vía
+    `app.dependency_overrides` (el singleton de producción no interfiere)."""
+    return cliente_http_compartido
+
+
 def _jwt_del_header(authorization: str | None) -> str:
     """Extrae el JWT del header `Authorization: Bearer ...` o lanza 401."""
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -58,6 +67,7 @@ def obtener_repositorio_solicitudes(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),
+        cliente=cliente_http_compartido,
     )
 
 
@@ -72,6 +82,7 @@ def obtener_repositorio_catalogo(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),
+        cliente=cliente_http_compartido,
     )
 
 
@@ -86,6 +97,7 @@ def obtener_repositorio_propuestas(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),
+        cliente=cliente_http_compartido,
     )
 
 
@@ -100,6 +112,7 @@ def obtener_repositorio_tareas(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),
+        cliente=cliente_http_compartido,
     )
 
 
@@ -114,6 +127,7 @@ def obtener_repositorio_miembros(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),
+        cliente=cliente_http_compartido,
     )
 
 
@@ -128,6 +142,7 @@ def obtener_repositorio_conversaciones(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),
+        cliente=cliente_http_compartido,
     )
 
 
@@ -142,6 +157,7 @@ def obtener_repositorio_integraciones(
         settings.supabase_url,
         settings.supabase_anon_key,
         _jwt_del_header(authorization),
+        cliente=cliente_http_compartido,
     )
 
 
@@ -155,6 +171,7 @@ def obtener_repositorio_integraciones_servicio() -> RepositorioIntegracionesSupa
         settings.supabase_url,
         settings.supabase_service_role_key,
         settings.supabase_service_role_key,
+        cliente=cliente_http_compartido,
     )
 
 
@@ -166,6 +183,7 @@ def obtener_repositorio_solicitudes_servicio() -> RepositorioSolicitudesSupabase
         settings.supabase_url,
         settings.supabase_service_role_key,
         settings.supabase_service_role_key,
+        cliente=cliente_http_compartido,
     )
 
 

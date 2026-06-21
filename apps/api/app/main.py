@@ -1,6 +1,9 @@
 """Aplicación FastAPI de Dupla Comercial."""
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
+from app.http_pool import cerrar_cliente_http
 from app.rutas.catalogo import router as router_catalogo
 from app.rutas.clickup import router as router_clickup
 from app.rutas.conversaciones import router as router_conversaciones
@@ -12,7 +15,15 @@ from app.rutas.propuestas import router as router_propuestas
 from app.rutas.solicitudes import router as router_solicitudes
 from app.rutas.tareas import router as router_tareas
 
-app = FastAPI(title="Dupla Comercial · API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown: cierra el cliente HTTP compartido al apagar."""
+    yield
+    await cerrar_cliente_http()
+
+
+app = FastAPI(title="Dupla Comercial · API", lifespan=lifespan)
 app.include_router(router_solicitudes)
 app.include_router(router_integraciones)
 app.include_router(router_interno)

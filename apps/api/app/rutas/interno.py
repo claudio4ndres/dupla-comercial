@@ -5,6 +5,7 @@ cada empresa, ingiere sus correos nuevos. Corre con `service role` (sin JWT → 
 no aplica), así que la `empresa_id` se fija SIEMPRE desde cada integración: jamás se
 infiere del ambiente y jamás se cruzan tenants (T11).
 """
+import asyncio
 import logging
 import secrets as _secrets
 from uuid import UUID
@@ -89,51 +90,59 @@ async def poller_correo(
         return await clasificar_solicitud(cuerpo, cliente_anthropic)
 
     integraciones = await repo_integraciones.listar_por_proveedor("gmail")
-    empresas_procesadas = 0
-    solicitudes_creadas = 0
-    for integracion in integraciones:
-        empresas_procesadas += 1
-        # Defensa en profundidad multi-tenant: una empresa que falle NO debe tumbar el
-        # poll de las demás. PERO el estado 'reconectar' es SÓLO para fallos de AUTH
-        # (token expirado/revocado): marcarlo por un 409 de BD u otro error de
-        # infraestructura es incorrecto y le pide al usuario reconectar tokens sanos.
-        try:
-            gmail = fabrica_gmail.crear(integracion)
-            resultado = await ingerir_correos_nuevos(
-                integracion,
-                gmail,
-                repo_solicitudes,
-                repo_integraciones,
-                clasificar=clasificar,
-            )
-            solicitudes_creadas += resultado.creadas
-        except ErrorAutenticacionGmail:
-            # Credenciales rotas: el usuario debe reconectar. (Normalmente la ingesta
-            # ya lo absorbe y marca 'reconectar'; esto cubre el caso en que el error
-            # de auth suba por otra vía.)
-            _LOG.warning(
-                "Poller: la empresa %s tiene la sesión de Gmail caída; "
-                "se marca 'reconectar' y se sigue.",
-                integracion.empresa_id,
-            )
-            # Sólo la fila gmail (#5): no tocar la integración clickup de la empresa.
-            await repo_integraciones.marcar_estado(
-                integracion.empresa_id, "reconectar", "gmail"
-            )
-            # CA5 (Spec 010): señal para el operador. Best-effort — la envolvemos para
-            # que un fallo de la alerta JAMÁS tumbe el poll de las demás empresas.
+
+    # Semáforo para limitar la concurrencia del poller (rate-limit Anthropic + Gmail).
+    semaforo = asyncio.Semaphore(5)
+
+    async def procesar(integracion):
+        """Procesa una integración dentro del semáforo. Aísla fallos por empresa."""
+        async with semaforo:
+            # Defensa en profundidad multi-tenant: una empresa que falle NO debe tumbar
+            # el poll de las demás. PERO el estado 'reconectar' es SÓLO para fallos de
+            # AUTH (token expirado/revocado): marcarlo por un 409 de BD u otro error de
+            # infraestructura es incorrecto y le pide al usuario reconectar tokens sanos.
             try:
-                avisar_reconectar(integracion.empresa_id, "gmail", "auth_invalida")
-            except Exception:  # noqa: BLE001 — la alerta no puede cortar el poller
-                _LOG.exception("Poller: falló avisar_reconectar; se sigue igual.")
-        except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
-            # Error NO-auth (409 de BD, Secret Manager, red…): se aísla y se sigue,
-            # SIN tocar el estado de la integración (sus credenciales están sanas).
-            _LOG.exception(
-                "Poller: la empresa %s falló por un error NO-auth; se aísla y se "
-                "sigue SIN marcar 'reconectar' (las credenciales están sanas).",
-                integracion.empresa_id,
-            )
+                gmail = fabrica_gmail.crear(integracion)
+                resultado = await ingerir_correos_nuevos(
+                    integracion,
+                    gmail,
+                    repo_solicitudes,
+                    repo_integraciones,
+                    clasificar=clasificar,
+                )
+                return resultado.creadas
+            except ErrorAutenticacionGmail:
+                # Credenciales rotas: el usuario debe reconectar.
+                _LOG.warning(
+                    "Poller: la empresa %s tiene la sesión de Gmail caída; "
+                    "se marca 'reconectar' y se sigue.",
+                    integracion.empresa_id,
+                )
+                # Sólo la fila gmail (#5): no tocar la integración clickup de la empresa.
+                await repo_integraciones.marcar_estado(
+                    integracion.empresa_id, "reconectar", "gmail"
+                )
+                # CA5 (Spec 010): señal para el operador. Best-effort — la envolvemos
+                # para que un fallo de la alerta JAMÁS tumbe el poll de las demás empresas.
+                try:
+                    avisar_reconectar(integracion.empresa_id, "gmail", "auth_invalida")
+                except Exception:  # noqa: BLE001 — la alerta no puede cortar el poller
+                    _LOG.exception("Poller: falló avisar_reconectar; se sigue igual.")
+                return 0
+            except Exception:  # noqa: BLE001 — aislar el fallo de una empresa
+                # Error NO-auth (409 de BD, Secret Manager, red…): se aísla y se sigue,
+                # SIN tocar el estado de la integración (sus credenciales están sanas).
+                _LOG.exception(
+                    "Poller: la empresa %s falló por un error NO-auth; se aísla y se "
+                    "sigue SIN marcar 'reconectar' (las credenciales están sanas).",
+                    integracion.empresa_id,
+                )
+                return 0
+
+    resultados = await asyncio.gather(*[procesar(i) for i in integraciones])
+    empresas_procesadas = len(integraciones)
+    solicitudes_creadas = sum(resultados)
+
     return ResumenPoller(
         empresas_procesadas=empresas_procesadas,
         solicitudes_creadas=solicitudes_creadas,

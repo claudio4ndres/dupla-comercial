@@ -75,6 +75,17 @@ class EstadoClickUp(BaseModel):
     estado: str | None = None  # conectado | reconectar | null (sin conectar)
 
 
+class ResultadoVerificacionClickUp(BaseModel):
+    """Resultado de POST /clickup/verificar: diagnóstico de la integración ClickUp.
+
+    `estado` refleja el estado final de la integración ('conectado' o 'reconectar').
+    `mensaje` describe lo que se hizo (reparó, ya estaba ok, etc.).
+    """
+
+    estado: str
+    mensaje: str | None = None
+
+
 class ResumenPoller(BaseModel):
     """Resumen de una corrida del poller interno (cuántas casillas y solicitudes)."""
 

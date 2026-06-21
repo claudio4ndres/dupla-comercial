@@ -311,7 +311,9 @@ def test_desconectar_sin_integracion_es_idempotente_204():
     assert r.status_code == 204
 
 
-# ── #5 · Auto-heal de ClickUp en GET /clickup/listas ─────────────────────────
+# ── #5 · Verificación de ClickUp en POST /clickup/verificar ──────────────────
+# (Antes vivía como auto-heal implícito en GET /clickup/listas. Ahora es un
+# endpoint explícito: POST /clickup/verificar. El GET quedó puro, sin side effects.)
 
 
 class _ClickUpListasOK:
@@ -327,7 +329,7 @@ class _ClickUpListasOK:
 
 
 class _ClickUpListasFalla:
-    """Doble que cae al pedir listas (token inválido/5xx): NO debe auto-sanar."""
+    """Doble que cae al pedir listas (token inválido/5xx): marca 'reconectar'."""
 
     tiene_token = True
 
@@ -335,32 +337,31 @@ class _ClickUpListasFalla:
         raise ErrorClickUp("ClickUp respondió 500 al pedir /team")
 
 
-def _http_listas(clickup, repo, empresa_id=EMPRESA_A):
+def _http_verificar(clickup, repo, empresa_id=EMPRESA_A):
     app.dependency_overrides[obtener_cliente_clickup] = lambda: clickup
     app.dependency_overrides[obtener_repositorio_integraciones] = lambda: repo
     app.dependency_overrides[obtener_empresa_actual] = lambda: empresa_id
     return TestClient(app)
 
 
-def test_listas_ok_devuelve_clickup_de_reconectar_a_conectado():
-    # #5 · Un /listas que responde OK PRUEBA que el token de ClickUp sirve. Si la
-    # integración clickup venía 'reconectar' (colateral de un fallo de Gmail ya
-    # corregido), se restaura a 'conectado' SOLA, igual que el auto-heal de Gmail.
+def test_verificar_ok_devuelve_clickup_de_reconectar_a_conectado():
+    # POST /verificar con token válido: si la integración venía 'reconectar', se
+    # restaura a 'conectado' (auto-heal explícito).
     repo = RepositorioIntegracionesEnMemoria(
         [_integ_clickup(estado="reconectar")]
     )
-    http = _http_listas(_ClickUpListasOK(), repo)
+    http = _http_verificar(_ClickUpListasOK(), repo)
 
-    r = http.get("/clickup/listas")
+    r = http.post("/clickup/verificar")
 
     assert r.status_code == 200
+    assert r.json()["estado"] == "conectado"
     integ = asyncio.run(repo.obtener_por_empresa_y_proveedor(EMPRESA_A, "clickup"))
     assert integ.estado == "conectado"  # se auto-sanó
 
 
-def test_listas_ok_no_toca_la_fila_gmail_de_la_misma_empresa():
-    # El auto-heal de ClickUp es POR proveedor: NO debe tocar la fila gmail (que
-    # podría estar legítimamente en 'reconectar' por su propio token caído).
+def test_verificar_ok_no_toca_la_fila_gmail_de_la_misma_empresa():
+    # La verificación de ClickUp es POR proveedor: NO debe tocar la fila gmail.
     gmail = Integracion(
         id=uuid4(), empresa_id=EMPRESA_A, proveedor="gmail",
         token_ref="secreto://gmail", estado="reconectar",
@@ -368,9 +369,9 @@ def test_listas_ok_no_toca_la_fila_gmail_de_la_misma_empresa():
     repo = RepositorioIntegracionesEnMemoria(
         [gmail, _integ_clickup(estado="reconectar")]
     )
-    http = _http_listas(_ClickUpListasOK(), repo)
+    http = _http_verificar(_ClickUpListasOK(), repo)
 
-    r = http.get("/clickup/listas")
+    r = http.post("/clickup/verificar")
 
     assert r.status_code == 200
     integ_gmail = asyncio.run(
@@ -379,31 +380,47 @@ def test_listas_ok_no_toca_la_fila_gmail_de_la_misma_empresa():
     assert integ_gmail.estado == "reconectar"  # gmail intacto
 
 
-def test_listas_ok_no_reescribe_si_ya_estaba_conectado():
-    # Si ya estaba 'conectado', el endpoint NO necesita reescribir (no-op): el estado
-    # se mantiene 'conectado'.
+def test_verificar_ok_no_reescribe_si_ya_estaba_conectado():
+    # Si ya estaba 'conectado', POST /verificar confirma sin mutar.
     repo = RepositorioIntegracionesEnMemoria(
         [_integ_clickup(estado="conectado")]
     )
-    http = _http_listas(_ClickUpListasOK(), repo)
+    http = _http_verificar(_ClickUpListasOK(), repo)
 
-    r = http.get("/clickup/listas")
+    r = http.post("/clickup/verificar")
 
     assert r.status_code == 200
+    assert r.json()["estado"] == "conectado"
     integ = asyncio.run(repo.obtener_por_empresa_y_proveedor(EMPRESA_A, "clickup"))
     assert integ.estado == "conectado"
 
 
-def test_listas_si_clickup_falla_no_auto_sana():
-    # Si ClickUp CAE, el token NO está probado: la integración sigue 'reconectar'
-    # (no se auto-sana por un fallo) y el endpoint responde 502.
+def test_verificar_si_clickup_falla_marca_reconectar():
+    # Si ClickUp CAE (token inválido), POST /verificar marca 'reconectar'.
+    repo = RepositorioIntegracionesEnMemoria(
+        [_integ_clickup(estado="conectado")]
+    )
+    http = _http_verificar(_ClickUpListasFalla(), repo)
+
+    r = http.post("/clickup/verificar")
+
+    assert r.status_code == 200
+    assert r.json()["estado"] == "reconectar"
+    integ = asyncio.run(repo.obtener_por_empresa_y_proveedor(EMPRESA_A, "clickup"))
+    assert integ.estado == "reconectar"
+
+
+def test_get_listas_no_muta_estado_integracion():
+    # Spec get-sin-side-effects: el GET /clickup/listas ya NO muta la integración.
+    # Aunque la integración venga 'reconectar' y el token funcione, el GET no auto-sana.
     repo = RepositorioIntegracionesEnMemoria(
         [_integ_clickup(estado="reconectar")]
     )
-    http = _http_listas(_ClickUpListasFalla(), repo)
+    http = _http_verificar(_ClickUpListasOK(), repo)
 
     r = http.get("/clickup/listas")
 
-    assert r.status_code == 502
+    assert r.status_code == 200
+    # El estado sigue 'reconectar': el GET no lo tocó.
     integ = asyncio.run(repo.obtener_por_empresa_y_proveedor(EMPRESA_A, "clickup"))
-    assert integ.estado == "reconectar"  # NO se sanó
+    assert integ.estado == "reconectar"

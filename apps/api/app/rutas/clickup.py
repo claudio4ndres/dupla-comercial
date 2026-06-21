@@ -9,6 +9,10 @@ un conector). Requiere auth (la empresa sale del JWT).
   llama a ClickUp.
 * Si ClickUp falla (token inválido, red, 5xx) → 502 (servicio externo caído).
 
+`POST /clickup/verificar` ejecuta la lógica de auto-heal de forma EXPLÍCITA: el front
+lo llama solo cuando el usuario quiere verificar/reparar la conexión ClickUp. El GET
+queda puro (sin side effects, RFC 7231 §4.2.1).
+
 El OAuth por empresa (iniciar/callback/estado/desconectar) ESPEJA el de Gmail
 (`rutas/integraciones.py`): el token se resuelve por-tenant y vive SÓLO en el backend
 (Secret Manager); jamás viaja al front (CA5). El endpoint que CREA las tareas vive en
@@ -30,20 +34,74 @@ from app.dependencias import (
     obtener_repositorio_integraciones,
     obtener_repositorio_integraciones_servicio,
 )
-from app.esquemas import EstadoClickUp, ListaClickUpSalida, UrlConsentimiento
+from app.esquemas import (
+    EstadoClickUp,
+    ListaClickUpSalida,
+    ResultadoVerificacionClickUp,
+    UrlConsentimiento,
+)
 from app.repositorios.integraciones import Integracion
 from app.servicios.oauth_clickup import ConfigOAuthClickUp, construir_url_consentimiento
 
 router = APIRouter(prefix="/clickup", tags=["clickup"])
 
 
+# ── Helper de auto-heal (extraído del GET, ahora reutilizable) ────────────────
+
+async def verificar_integracion_clickup(
+    clickup,
+    repo,
+    empresa_id: UUID,
+) -> ResultadoVerificacionClickUp:
+    """Verifica la integración ClickUp de la empresa y repara el estado si es necesario.
+
+    - Sin token → no hay integración, nada que verificar.
+    - Llama a ClickUp (/listas) para probar que el token funciona.
+    - Si funciona y la integración venía 'reconectar', la repara a 'conectado'.
+    - Si ClickUp falla (token inválido), marca 'reconectar'.
+
+    Retorna el estado resultante + un mensaje descriptivo."""
+    if not clickup.tiene_token:
+        return ResultadoVerificacionClickUp(
+            estado="sin_conectar",
+            mensaje="La empresa no tiene integración ClickUp configurada.",
+        )
+
+    try:
+        await clickup.listar_listas()
+    except Exception:
+        # El token no sirve: marcar 'reconectar' si no estaba ya.
+        integracion = await repo.obtener_por_empresa_y_proveedor(empresa_id, "clickup")
+        if integracion is not None and integracion.estado != "reconectar":
+            await repo.marcar_estado(empresa_id, "reconectar", "clickup")
+        return ResultadoVerificacionClickUp(
+            estado="reconectar",
+            mensaje="El token de ClickUp no es válido. Se requiere reconexión.",
+        )
+
+    # Token funciona: restaurar a 'conectado' si venía en otro estado.
+    integracion = await repo.obtener_por_empresa_y_proveedor(empresa_id, "clickup")
+    if integracion is not None and integracion.estado != "conectado":
+        await repo.marcar_estado(empresa_id, "conectado", "clickup")
+        return ResultadoVerificacionClickUp(
+            estado="conectado",
+            mensaje="La integración fue reparada automáticamente (auto-heal).",
+        )
+    return ResultadoVerificacionClickUp(
+        estado="conectado",
+        mensaje="La integración ClickUp funciona correctamente.",
+    )
+
+
 @router.get("/listas", response_model=list[ListaClickUpSalida])
 async def listar_listas(
     clickup=Depends(obtener_cliente_clickup),
-    repo=Depends(obtener_repositorio_integraciones),
-    empresa_id: UUID = Depends(obtener_empresa_actual),
 ) -> list[ListaClickUpSalida]:
-    """Listas reales del ClickUp del usuario (planas) para el selector de destino."""
+    """Listas reales del ClickUp del usuario (planas) para el selector de destino.
+
+    Endpoint PURO (sin side effects): solo lee y devuelve listas. No muta el estado
+    de la integración. Para verificar/reparar la conexión, usar POST /clickup/verificar.
+    """
     # Sin token: la empresa aún no conectó ClickUp → [] (el front muestra el aviso).
     if not clickup.tiene_token:
         return []
@@ -55,22 +113,29 @@ async def listar_listas(
             status_code=502, detail="El servicio de ClickUp no está disponible"
         ) from exc
 
-    # Auto-heal de ClickUp (#5): un /listas OK PRUEBA que el token de ClickUp sirve. Si
-    # la integración clickup venía 'reconectar' (colateral de un fallo de Gmail antes
-    # del fix, o una falsa alarma), se restaura a 'conectado' SOLA — igual que el
-    # auto-heal de Gmail en la ingesta. Sólo la fila clickup (no toca gmail). Best-effort:
-    # si el repo falla, NO se rompe el listado, que ya respondió.
-    try:
-        integracion = await repo.obtener_por_empresa_y_proveedor(empresa_id, "clickup")
-        if integracion is not None and integracion.estado != "conectado":
-            await repo.marcar_estado(empresa_id, "conectado", "clickup")
-    except Exception:  # noqa: BLE001 — el auto-heal no debe tumbar el listado
-        pass
-
     return [
         ListaClickUpSalida(id=l.id, nombre=l.nombre, espacio=l.espacio)
         for l in listas
     ]
+
+
+@router.post("/verificar", response_model=ResultadoVerificacionClickUp)
+async def verificar_clickup(
+    clickup=Depends(obtener_cliente_clickup),
+    repo=Depends(obtener_repositorio_integraciones),
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+) -> ResultadoVerificacionClickUp:
+    """Verifica y repara la integración ClickUp de la empresa (auto-heal explícito).
+
+    El front llama a este endpoint cuando el usuario quiere verificar la conexión
+    (botón "Verificar conexión"). Es un POST porque PUEDE mutar el estado de la
+    integración (cambiar 'reconectar' → 'conectado' o viceversa).
+
+    NOTA para el frontend: este endpoint REEMPLAZA el auto-heal implícito que antes
+    vivía en GET /clickup/listas. El GET ahora es puro (sin side effects). Si el front
+    detecta un 502 al cargar listas, puede ofrecer al usuario llamar a este endpoint
+    para diagnosticar la conexión."""
+    return await verificar_integracion_clickup(clickup, repo, empresa_id)
 
 
 @router.get("/estado", response_model=EstadoClickUp)
