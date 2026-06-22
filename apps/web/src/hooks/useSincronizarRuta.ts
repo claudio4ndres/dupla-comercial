@@ -37,7 +37,14 @@ const PANTALLA_DE_RUTA: Record<string, Pantalla> = {
  * Debe montarse una sola vez en el componente raíz de la app (App.tsx).
  */
 export function useSincronizarRuta() {
-  const { pantalla, irA } = useSesion()
+  const { sesion, pantalla, irA } = useSesion()
+
+  // Sesión → URL: al cerrar sesión, la URL vuelve a "/" (login).
+  useEffect(() => {
+    if (sesion === null && window.location.pathname !== '/') {
+      window.history.replaceState(null, '', '/')
+    }
+  }, [sesion])
 
   // Pantalla → URL: cuando pantalla cambia, crear entrada en el historial.
   // pushState (en vez de replaceState) para que el botón "atrás" funcione.
