@@ -146,3 +146,6 @@ Semana 5+: ítem 5 (Router), ítems 7-9 (deuda menor)
 - Toda tabla nueva o modificada debe tener RLS y su política correspondiente.
 - Sin secretos en el repo ni en el frontend.
 - Comentarios y commits en español.
+- **Git workflow:** cada cambio nuevo se trabaja en una rama creada desde `main`.
+  Formato de rama: `feat/<nombre>`, `fix/<nombre>`, `refactor/<nombre>`.
+  Nunca pushear directo a main.
