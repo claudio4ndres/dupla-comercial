@@ -4,7 +4,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { conversarConJavo } from '../api/javo'
 import { obtenerRecursosDrive } from '../api/recursos'
-import { iniciarConversacion, obtenerCotizacionEnCurso, obtenerHistorialConversacion } from '../api/conversaciones'
+import { iniciarConversacion, obtenerCotizacionEnCurso, obtenerHistorialConversacion, obtenerSugerencias } from '../api/conversaciones'
 import { guardarPropuesta, obtenerPropuesta } from '../api/propuestas'
 import { useSesion } from './SesionContext'
 import type { RecursoDrive } from '../datosMock'
@@ -28,6 +28,8 @@ export interface SolicitudContextValor {
   fuentes: Fuente[]
   enviando: boolean
   recursos: RecursoDrive[]
+  /** Chips dinámicos generados por Haiku (vacío mientras se cargan). */
+  chips: string[]
   // Acciones
   abrirSolicitud: (s: Solicitud) => void
   iniciarChat: (tipo: TipoConfirmado) => void
@@ -56,6 +58,7 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
   const [fuentes, setFuentes] = useState<Fuente[]>([])
   const [enviando, setEnviando] = useState(false)
   const [recursos, setRecursos] = useState<RecursoDrive[]>([])
+  const [chips, setChips] = useState<string[]>([])
 
   // ─── Efecto: recursos del Drive de la empresa (panel del chat) ─────────────
   useEffect(() => {
@@ -83,6 +86,7 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
     setTareas([])
     setFuentes([])
     setMensajes([])
+    setChips([])
     setEnviando(true)
     irA('chat')
 
@@ -96,6 +100,11 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
         setMensajes([{ rol: 'javo', contenido: '¡Hola! 👋 Vamos a trabajar en esta solicitud.' }])
       })
       .finally(() => setEnviando(false))
+
+    // Carga chips dinámicos (Haiku) — no bloquea el render del chat
+    obtenerSugerencias(sol.id, t).then((c) => {
+      if (c && c.length) setChips(c)
+    })
 
     // Rehidrata el hilo persistido (T14)
     obtenerHistorialConversacion(sol.id).then((historial) => {
@@ -162,6 +171,7 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
     fuentes,
     enviando,
     recursos,
+    chips,
     abrirSolicitud,
     iniciarChat,
     enviarMensaje,

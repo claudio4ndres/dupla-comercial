@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Onboarding · Dupla Comercial</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" />
+<style>
+  :root{
+    --brand:#F04E37; --brand-soft:rgba(240,78,55,.12);
+    --bg:#faf7f2; --card:#ffffff; --txt:#1a1714; --muted:#6f6a64; --hint:#a39d95;
+    --border:rgba(0,0,0,.10); --border-2:rgba(0,0,0,.18);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--txt);}
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .card{position:relative;width:100%;max-width:560px;min-height:540px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:36px 44px;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.10);}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .brand{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--brand);}
+  .brand i{font-size:19px;}
+  .skip{border:none;background:transparent;color:var(--hint);font-size:13px;cursor:pointer;padding:4px 8px;border-radius:8px;}
+  .skip:hover{color:var(--muted);}
+  .stage{flex:1;display:flex;align-items:center;justify-content:center;}
+  .inner{width:100%;max-width:440px;text-align:center;}
+  .ico{width:72px;height:72px;margin:0 auto;border-radius:50%;background:var(--brand-soft);display:flex;align-items:center;justify-content:center;}
+  .ico i{font-size:34px;color:var(--brand);}
+  .slide h2{margin:20px 0 10px;font-size:23px;font-weight:600;}
+  .slide p{margin:0;color:var(--muted);font-size:16px;line-height:1.65;}
+  .bottom{display:flex;justify-content:space-between;align-items:center;margin-top:18px;}
+  .dots{display:flex;gap:8px;}
+  .dots .d{width:8px;height:8px;border-radius:50%;background:var(--border-2);transition:all .25s;}
+  .dots .d.on{background:var(--brand);width:24px;border-radius:4px;}
+  .nav{display:flex;gap:10px;}
+  .btn{border:1px solid var(--border-2);background:transparent;color:var(--muted);border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer;}
+  .btn:hover{background:#f3efe9;}
+  .btn-primary{border:none;background:var(--brand);color:#fff;font-weight:600;padding:9px 22px;}
+  .btn-primary:hover{background:#d9402b;}
+  .done-note{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;color:var(--muted);padding:24px;}
+  .done-note .check{width:64px;height:64px;border-radius:50%;background:var(--brand-soft);display:flex;align-items:center;justify-content:center;color:var(--brand);font-size:32px;}
+</style>
+</head>
+<body>
+  <div class="overlay" id="overlay">
+    <div class="card">
+      <div class="top">
+        <span class="brand"><i class="ti ti-sparkles"></i> Dupla Comercial</span>
+        <button class="skip" id="skip">Saltar</button>
+      </div>
+      <div class="stage">
+        <div class="inner">
+          <div class="slide" data-i="0">
+            <div class="ico"><i class="ti ti-robot"></i></div>
+            <h2>Bienvenido a Dupla Comercial</h2>
+            <p>Soy Javo, tu dupla comercial senior. Te ayudo a resolver las solicitudes que llegan por correo — de la idea a la propuesta, y de la propuesta a las tareas.</p>
+          </div>
+          <div class="slide" data-i="1" hidden>
+            <div class="ico"><i class="ti ti-mail-opened"></i></div>
+            <h2>Tu bandeja inteligente</h2>
+            <p>Los correos de tus clientes llegan a tu bandeja. Javo los lee, los clasifica y te deja un resumen claro — sin que muevas un dedo.</p>
+          </div>
+          <div class="slide" data-i="2" hidden>
+            <div class="ico"><i class="ti ti-arrows-split-2"></i></div>
+            <h2>Dos tipos de solicitud</h2>
+            <p>Tipo 1, cotización concreta: ya sabes qué hacer y Javo arma la cotización. Tipo 2, ideas: no hay brief cerrado, Javo propone conceptos y busca referencias contigo.</p>
+          </div>
+          <div class="slide" data-i="3" hidden>
+            <div class="ico"><i class="ti ti-messages"></i></div>
+            <h2>Conversa y aterriza la propuesta</h2>
+            <p>Chateas con Javo para definir componentes, horas y valores. Consulta tu Drive en vivo y deja todo listo para presentar al cliente en Excel o PPT.</p>
+          </div>
+          <div class="slide" data-i="4" hidden>
+            <div class="ico"><i class="ti ti-subtask"></i></div>
+            <h2>De propuesta a tareas</h2>
+            <p>Cuando la propuesta está lista, Javo genera las tareas para tu equipo y las sincroniza con ClickUp. Tú supervisas, él ejecuta.</p>
+          </div>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="dots" id="dots"></div>
+        <div class="nav">
+          <button class="btn" id="back" style="visibility:hidden;">Atrás</button>
+          <button class="btn btn-primary" id="next">Siguiente</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="done-note" id="doneNote" hidden>
+    <div class="check"><i class="ti ti-check"></i></div>
+    <div>Onboarding completado — no se volverá a mostrar.<br><button class="btn" onclick="localStorage.removeItem('dc_onboarding_visto');location.reload();" style="margin-top:12px;">Verlo de nuevo (resetear)</button></div>
+  </div>
+
+<script>
+  var CLAVE = 'dc_onboarding_visto';
+  var overlay = document.getElementById('overlay');
+  var doneNote = document.getElementById('doneNote');
+
+  if (localStorage.getItem(CLAVE)) {
+    overlay.hidden = true;
+    doneNote.hidden = false;
+  } else {
+    var slides = [].slice.call(document.querySelectorAll('.slide'));
+    var n = slides.length, i = 0;
+    var dots = document.getElementById('dots');
+    var back = document.getElementById('back');
+    var next = document.getElementById('next');
+    var skip = document.getElementById('skip');
+    for (var k = 0; k < n; k++) { var d = document.createElement('span'); d.className = 'd'; dots.appendChild(d); }
+    var dd = [].slice.call(dots.children);
+    function render(){
+      slides.forEach(function(s, k){ s.hidden = (k !== i); });
+      dd.forEach(function(d, k){ d.className = 'd' + (k === i ? ' on' : ''); });
+      back.style.visibility = i === 0 ? 'hidden' : 'visible';
+      next.textContent = i === n - 1 ? 'Empezar' : 'Siguiente';
+    }
+    function terminar(){
+      localStorage.setItem(CLAVE, new Date().toISOString());
+      overlay.hidden = true;
+      doneNote.hidden = false;
+    }
+    next.onclick = function(){ if (i < n - 1) { i++; render(); } else { terminar(); } };
+    back.onclick = function(){ if (i > 0) { i--; render(); } };
+    skip.onclick = terminar;
+    document.addEventListener('keydown', function(e){ if (e.key === 'ArrowRight') next.click(); if (e.key === 'ArrowLeft') back.click(); });
+    render();
+  }
+</script>
+</body>
+</html>

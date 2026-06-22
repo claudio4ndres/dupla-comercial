@@ -20,17 +20,19 @@ interface Props {
   fuentes: Fuente[]
   /** Recursos del Drive de la empresa (reales desde el catálogo). */
   recursos: RecursoDrive[]
+  /** Chips dinámicos generados por Haiku (vacío = usa fallback estático). */
+  chips?: string[]
   enviando: boolean
   onEnviar: (texto: string) => void
   onGenerarPropuesta: () => void
 }
 
-const CHIPS: Record<TipoConfirmado, string[]> = {
+const CHIPS_FALLBACK: Record<TipoConfirmado, string[]> = {
   t1: ['Son 3 días de activación', 'Suma coordinación de producción', 'Genera la propuesta'],
   t2: ['Busca opciones en internet 🌐', 'Dame 3 ideas de alto impacto', 'Aterriza la idea ganadora'],
 }
 
-export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos, enviando, onEnviar, onGenerarPropuesta }: Props) {
+export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos, chips, enviando, onEnviar, onGenerarPropuesta }: Props) {
   const [texto, setTexto] = useState('')
   const cajaMensajes = useRef<HTMLDivElement>(null)
   const areaRef = useRef<HTMLTextAreaElement>(null)
@@ -94,7 +96,7 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
             </div>
 
             <div className="chips">
-              {CHIPS[tipo].map((c) => (
+              {(chips && chips.length > 0 ? chips : CHIPS_FALLBACK[tipo]).map((c) => (
                 <span key={c} className="chip" onClick={() => enviar(c)}>
                   {c}
                 </span>

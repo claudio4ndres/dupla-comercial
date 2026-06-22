@@ -10,6 +10,30 @@ import type { Componente, Fuente, Mensaje, Tarea, TipoConfirmado } from '../tipo
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 
+// ── Sugerencias dinámicas (chips generados por Haiku) ────────────────────────
+
+/** Obtiene 3 chips contextuales del backend (generados por Haiku). */
+export async function obtenerSugerencias(
+  solicitudId: string,
+  tipo: TipoConfirmado,
+): Promise<string[]> {
+  try {
+    const r = await fetch(`${API_BASE}/conversaciones/${solicitudId}/sugerencias`, {
+      method: 'POST',
+      headers: {
+        ...(await cabecerasAuthAsync()),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ tipo }),
+    })
+    if (!r.ok) return []
+    const data = (await r.json()) as { chips?: string[] }
+    return data.chips ?? []
+  } catch {
+    return []
+  }
+}
+
 // ── Iniciar conversación (saludo de Javo desde el backend) ───────────────────
 
 /** Llama al backend para generar el saludo inicial de Javo según el tipo. */

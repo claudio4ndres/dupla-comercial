@@ -48,6 +48,18 @@ class _RespuestaIniciar(BaseModel):
     """Respuesta del endpoint /iniciar: solo el texto del saludo."""
     texto: str
 
+
+# ── Esquemas del endpoint /sugerencias ────────────────────────────────────────
+
+class _EntradaSugerencias(BaseModel):
+    """Cuerpo del POST /conversaciones/{solicitud_id}/sugerencias."""
+    tipo: TipoConversacion
+
+
+class _RespuestaSugerencias(BaseModel):
+    """Respuesta del endpoint /sugerencias: 3 chips contextuales."""
+    chips: list[str]
+
 _LOG = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversaciones", tags=["conversaciones"])
@@ -121,6 +133,53 @@ async def iniciar(
         )
 
     return _RespuestaIniciar(texto=texto)
+
+
+@router.post("/{solicitud_id}/sugerencias", response_model=_RespuestaSugerencias)
+async def sugerencias(
+    solicitud_id: UUID,
+    entrada: _EntradaSugerencias,
+    repo_solicitudes=Depends(obtener_repositorio_solicitudes),
+    cliente=Depends(obtener_cliente_anthropic),
+    empresa_id: UUID = Depends(obtener_empresa_actual),
+) -> _RespuestaSugerencias:
+    """Genera 3 chips contextuales con Haiku basándose en el resumen de la solicitud."""
+    solicitud = await repo_solicitudes.obtener(solicitud_id, empresa_id)
+    if solicitud is None:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+
+    prompt = (
+        f"Eres un asistente de una agencia BTL. El usuario acaba de abrir un correo de tipo "
+        f"{'cotización concreta' if entrada.tipo == 't1' else 'pedido de ideas'}.\n"
+        f"Remitente: {solicitud.remitente}\n"
+        f"Resumen: {solicitud.resumen or solicitud.asunto}\n\n"
+        f"Genera EXACTAMENTE 3 frases cortas (máximo 6 palabras cada una) que el usuario "
+        f"podría querer decirle al asistente para avanzar la conversación. "
+        f"{'Para cotización: preguntas sobre componentes, días, cantidades.' if entrada.tipo == 't1' else 'Para ideas: pedir conceptos, buscar referencias, aterrizar.'}\n"
+        f"Responde SOLO con las 3 frases, una por línea, sin números ni viñetas."
+    )
+
+    try:
+        respuesta = await cliente.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=100,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        texto = respuesta.content[0].text.strip()
+        lineas = [l.strip() for l in texto.split("\n") if l.strip()][:3]
+        # Fallback si Haiku no devuelve 3 líneas
+        if len(lineas) < 3:
+            lineas = _chips_fallback(entrada.tipo)
+        return _RespuestaSugerencias(chips=lineas)
+    except Exception:
+        return _RespuestaSugerencias(chips=_chips_fallback(entrada.tipo))
+
+
+def _chips_fallback(tipo: str) -> list[str]:
+    """Chips estáticos de fallback si Haiku falla."""
+    if tipo == "t1":
+        return ["¿Cuántos días dura?", "Arma los componentes", "Genera la propuesta"]
+    return ["Busca referencias en internet", "Dame 3 ideas de impacto", "Aterriza la idea ganadora"]
 
 
 @router.post("/responder", response_model=RespuestaConversacion)

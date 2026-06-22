@@ -1,0 +1,266 @@
+{
+  "info": {
+    "name": "Dupla Comercial - Login + Verificacion",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. RESET PASSWORD (admin) -> deja una clave conocida",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "apikey",
+            "value": "{{service_role}}",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{service_role}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://jbeejgxsbjzykwkunses.supabase.co/auth/v1/admin/users/e1048906-8531-4335-8c4e-55be050c51cc",
+          "protocol": "https",
+          "host": [
+            "jbeejgxsbjzykwkunses",
+            "supabase",
+            "co"
+          ],
+          "path": [
+            "auth",
+            "v1",
+            "admin",
+            "users",
+            "e1048906-8531-4335-8c4e-55be050c51cc"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"{{password}}\",\n  \"email_confirm\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Reset 200', () => pm.response.code === 200);",
+              "console.log(pm.response.code===200 ? 'OK clave cambiada a {{password}}' : 'FALLO: '+pm.response.text());"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "1. Login (Supabase -> guarda access_token)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "apikey",
+            "value": "sb_publishable_JxQNjB9G_ZRcchEGVGK_nQ_z909hcJO",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://jbeejgxsbjzykwkunses.supabase.co/auth/v1/token?grant_type=password",
+          "protocol": "https",
+          "host": [
+            "jbeejgxsbjzykwkunses",
+            "supabase",
+            "co"
+          ],
+          "path": [
+            "auth",
+            "v1",
+            "token"
+          ],
+          "query": [
+            {
+              "key": "grant_type",
+              "value": "password"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"cafigueroaarias@gmail.com\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const j = pm.response.json();",
+              "if (j.access_token) { pm.collectionVariables.set('access_token', j.access_token); console.log('OK token guardado'); }",
+              "else { console.log('LOGIN FALLO:', JSON.stringify(j)); }",
+              "pm.test('Login 200', () => pm.response.code === 200);"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "2. Salud (sin auth)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/salud",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "salud"
+          ],
+          "port": "8000"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "3. Empresa actual (auth)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8000/empresa",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "empresa"
+          ],
+          "port": "8000"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "4. Integraciones - correo (auth)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8000/integraciones/correo",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "integraciones",
+            "correo"
+          ],
+          "port": "8000"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "5. Catalogo - recursos (auth)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8000/catalogo/recursos",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "catalogo",
+            "recursos"
+          ],
+          "port": "8000"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "6. Solicitudes (auth)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8000/solicitudes",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "solicitudes"
+          ],
+          "port": "8000"
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "password",
+      "value": "ClaveNueva-2026"
+    },
+    {
+      "key": "service_role",
+      "value": "PEGA-AQUI-TU-SERVICE_ROLE (sb_secret_...)"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    }
+  ]
+}

@@ -47,6 +47,7 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     fuentes,
     enviando,
     recursos,
+    chips,
     abrirSolicitud,
     iniciarChat,
     enviarMensaje,
@@ -162,6 +163,7 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
                 componentes={componentes}
                 fuentes={fuentes}
                 recursos={recursos}
+                chips={chips}
                 enviando={enviando}
                 onEnviar={enviarMensaje}
                 onGenerarPropuesta={generarPropuesta}
