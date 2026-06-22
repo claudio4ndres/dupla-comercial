@@ -4,7 +4,7 @@
 import { test } from '@fast-check/vitest'
 import fc from 'fast-check'
 import { describe, expect } from 'vitest'
-import { costoLinea, valorVenta, MARGEN_VENTA, type Componente } from './tipos'
+import { costoLinea, valorVenta, type Componente } from './tipos'
 
 describe('costoLinea — PBT', () => {
   // Feature: tests-chat-propuesta, Property 1: Multiplicación exacta de costoLinea

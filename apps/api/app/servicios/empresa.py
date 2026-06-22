@@ -77,3 +77,34 @@ class ResolvedorEmpresaSupabase:
             color_marca=fila["color_marca"],
             plan=fila["plan"],
         )
+
+    async def onboarding_visto_de(self, user_id: UUID) -> bool:
+        """Si el usuario ya vio el onboarding de bienvenida (False si no hay fila)."""
+        headers = {
+            "apikey": self._key,
+            "Authorization": f"Bearer {self._key}",  # service role: salta la RLS
+        }
+        resp = await self._peticion(
+            "GET",
+            f"/usuarios?id=eq.{user_id}&select=onboarding_visto&limit=1",
+            headers=headers,
+        )
+        resp.raise_for_status()
+        filas = resp.json()
+        return bool(filas[0]["onboarding_visto"]) if filas else False
+
+    async def marcar_onboarding_visto(self, user_id: UUID) -> None:
+        """Marca onboarding_visto = true para el usuario (idempotente)."""
+        headers = {
+            "apikey": self._key,
+            "Authorization": f"Bearer {self._key}",  # service role: salta la RLS
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        }
+        resp = await self._peticion(
+            "PATCH",
+            f"/usuarios?id=eq.{user_id}",
+            headers=headers,
+            json={"onboarding_visto": True},
+        )
+        resp.raise_for_status()

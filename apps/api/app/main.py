@@ -14,6 +14,7 @@ from app.rutas.miembros import router as router_miembros
 from app.rutas.propuestas import router as router_propuestas
 from app.rutas.solicitudes import router as router_solicitudes
 from app.rutas.tareas import router as router_tareas
+from app.rutas.usuario import router as router_usuario
 
 
 @asynccontextmanager
@@ -34,6 +35,7 @@ app.include_router(router_propuestas)
 app.include_router(router_tareas)
 app.include_router(router_clickup)
 app.include_router(router_miembros)
+app.include_router(router_usuario)
 
 
 @app.get("/salud")

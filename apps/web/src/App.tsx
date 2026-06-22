@@ -9,6 +9,7 @@ import { Propuesta } from './componentes/Propuesta'
 import { PropuestasLista } from './componentes/PropuestasLista'
 import { Tareas } from './componentes/Tareas'
 import { Login } from './componentes/Login'
+import { OnboardingBienvenida } from './componentes/OnboardingBienvenida'
 import { BannerError, CargandoLista } from './componentes/EstadoLista'
 import {
   desconectarCorreo,
@@ -35,7 +36,7 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
   useSincronizarRuta()
 
   // Estado de sesión, empresa y navegación provienen del contexto.
-  const { sesion, empresa, cerrarSesion, pantalla, irA: irAContexto } = useSesion()
+  const { sesion, empresa, cerrarSesion, pantalla, irA: irAContexto, bienvenidaPendiente, cerrarBienvenida } = useSesion()
 
   // Estado de la solicitud activa, chat y cotización provienen del contexto.
   const {
@@ -236,6 +237,8 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
             ))}
         </div>
       </div>
+
+      {bienvenidaPendiente && <OnboardingBienvenida onCerrar={cerrarBienvenida} />}
     </div>
   )
 }

@@ -395,6 +395,41 @@ async def obtener_empresa_actual(
     return empresa
 
 
+async def obtener_usuario_actual(
+    authorization: str | None = Header(default=None),
+    verificador=Depends(obtener_verificador_jwt),
+) -> UUID:
+    """Auth real: el `auth.uid` (sub) del usuario a partir del JWT de Supabase.
+
+    Análogo a `obtener_empresa_actual`, pero devuelve el usuario, no la empresa: lo
+    usan los endpoints que operan sobre la fila del propio usuario (p. ej. el flag de
+    onboarding de bienvenida). Cualquier fallo → 401 sin detalle."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Falta el token de autenticación",
+        )
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        claims = verificador.verificar(token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido"
+        )
+    sub = claims.get("sub")
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El token no identifica al usuario",
+        )
+    try:
+        return UUID(str(sub))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="sub inválido en el token"
+        )
+
+
 async def obtener_cliente_clickup(
     empresa_id: UUID = Depends(obtener_empresa_actual),
     repo=Depends(obtener_repositorio_integraciones),

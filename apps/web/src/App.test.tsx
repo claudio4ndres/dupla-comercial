@@ -17,6 +17,13 @@ vi.mock('./supabase/cliente', () => ({
   },
 }))
 
+// El usuario de estos tests ya vio el onboarding → sin slider de bienvenida (no tapa
+// el flujo) y sin un fetch extra a /usuario que descuadre el orden de respuestas.
+vi.mock('./api/usuario', () => ({
+  obtenerUsuario: vi.fn().mockResolvedValue({ onboarding_visto: true }),
+  marcarOnboardingVisto: vi.fn().mockResolvedValue(undefined),
+}))
+
 import { supabase } from './supabase/cliente'
 import App from './App'
 import { SesionProvider } from './contextos/SesionContext'
@@ -82,6 +89,10 @@ async function entrarABandeja(user: ReturnType<typeof userEvent.setup>) {
 
 describe('App (arnés)', () => {
   beforeEach(() => {
+    // Aislamiento: useSincronizarRuta hace pushState (NO es no-op en jsdom), así que
+    // la URL se filtra entre tests. Reseteamos a "/" para que cada test arranque en la
+    // pantalla por defecto (configuracion) y no herede la ruta del test anterior.
+    window.history.replaceState(null, '', '/')
     authStateCallback = null
     mockAuth.getSession.mockResolvedValue({ data: { session: null } })
     mockAuth.signInWithPassword.mockResolvedValue({ error: null })

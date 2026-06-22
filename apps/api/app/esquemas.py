@@ -16,6 +16,13 @@ class EmpresaActual(BaseModel):
     plan: str
 
 
+class UsuarioActual(BaseModel):
+    """Datos del usuario autenticado que el front necesita tras el login. Hoy: si ya
+    vio el onboarding de bienvenida (el slider se muestra una sola vez por usuario)."""
+
+    onboarding_visto: bool
+
+
 class ResultadoClasificacion(BaseModel):
     """Resultado de clasificar y resumir una solicitud."""
 
