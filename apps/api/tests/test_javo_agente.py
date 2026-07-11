@@ -418,3 +418,79 @@ def test_sin_cliente_drive_las_tools_degradan_sin_romper():
     assert "sin acceso a drive" in segunda
     tercera = json.dumps(cliente.llamadas[2]["messages"], ensure_ascii=False).lower()
     assert "sin acceso a drive" in tercera
+
+
+# ── Spec 013 · Javo partner comercial ─────────────────────────────────────────
+from app.servicios.javo import _herramientas, _system_para  # noqa: E402
+
+
+def test_herramientas_incluye_consultar_tarifario_en_orden_fijo():
+    # CA1: el orden de las tools es FIJO (estabilidad del prompt caching) y
+    # consultar_tarifario va PRIMERA (precios estándar sin pasar por el Drive).
+    sin_internet = [t["name"] for t in _herramientas(False)]
+    con_internet = [t["name"] for t in _herramientas(True)]
+    assert sin_internet == [
+        "consultar_tarifario",
+        "buscar_en_drive",
+        "leer_documento_drive",
+        "proponer_componentes",
+        "proponer_tareas",
+    ]
+    assert con_internet == [
+        "consultar_tarifario",
+        "buscar_en_drive",
+        "leer_documento_drive",
+        "buscar_en_internet",
+        "proponer_componentes",
+        "proponer_tareas",
+    ]
+
+
+def test_consultar_tarifario_usa_catalogo_aunque_haya_drive():
+    # CA2: el tarifario estructurado responde desde la tabla `catalogo` (RLS),
+    # SIN pasar por el Drive, y cita la Fuente.
+    repo = RepositorioCatalogoEnMemoria([_item()])
+    drive = _DriveFake(archivos=[_ArchivoFake("f1", "Tarifario.xlsx", "sheet")])
+    cliente = ClienteAnthropicGuionFake(
+        [
+            respuesta_tool_use("consultar_tarifario", {"consulta": "promotoras"}),
+            respuesta_texto("Promotoras a $240.000 según tarifario."),
+        ]
+    )
+    resp = _correr(
+        "t1", _msg("cotiza promotoras"), cliente,
+        repo_catalogo=repo, proveedor_busqueda=_ProveedorFake(),
+        empresa_id=EMPRESA, cliente_drive=drive,
+    )
+    segunda = json.dumps(cliente.llamadas[1]["messages"], ensure_ascii=False)
+    assert "240000" in segunda  # el valor REAL del catálogo llegó al modelo
+    assert drive.consultas == []  # no pasó por el Drive
+    assert any("Tarifario_promotores_2026.xlsx" in f.referencia for f in resp.fuentes)
+
+
+def test_system_y_tools_estables_entre_llamadas():
+    # CA3: dos turnos del mismo tipo mandan system y tools BYTE-idénticos
+    # (regresión anti-invalidadores del prompt caching).
+    repo = RepositorioCatalogoEnMemoria([_item()])
+    cliente = ClienteAnthropicGuionFake(
+        [respuesta_texto("Primer turno."), respuesta_texto("Segundo turno.")]
+    )
+    _correr("t1", _msg("hola"), cliente, repo_catalogo=repo, empresa_id=EMPRESA)
+    _correr("t1", _msg("hola de nuevo"), cliente, repo_catalogo=repo, empresa_id=EMPRESA)
+
+    a, b = cliente.llamadas[0], cliente.llamadas[1]
+    assert json.dumps(a["system"], sort_keys=True) == json.dumps(b["system"], sort_keys=True)
+    assert a["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert [t["name"] for t in a["tools"]] == [t["name"] for t in b["tools"]]
+
+
+def test_prompt_contiene_conductas_comerciales():
+    # CA4: las 4 conductas del partner comercial + el invariante de no inventar.
+    for tipo in ("t1", "t2"):
+        prompt = _system_para(tipo)
+        assert "presupuesto" in prompt.lower()            # descubrimiento del brief
+        assert "máximo 2" in prompt.lower()               # no interrogatorio
+        assert "alternativa" in prompt.lower()            # opción recomendada + alternativa
+        assert "complemento" in prompt.lower()            # upsell con criterio
+        assert "¿Genero la propuesta?" in prompt          # empuje al cierre
+        assert "NUNCA inventes un precio" in prompt       # invariante conservado

@@ -149,13 +149,13 @@ async def sugerencias(
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
 
     prompt = (
-        f"Eres un asistente de una agencia BTL. El usuario acaba de abrir un correo de tipo "
-        f"{'cotización concreta' if entrada.tipo == 't1' else 'pedido de ideas'}.\n"
+        f"Eres la dupla comercial de una agencia BTL. El usuario acaba de abrir un correo "
+        f"de tipo {'cotización concreta' if entrada.tipo == 't1' else 'pedido de ideas'}.\n"
         f"Remitente: {solicitud.remitente}\n"
         f"Resumen: {solicitud.resumen or solicitud.asunto}\n\n"
         f"Genera EXACTAMENTE 3 frases cortas (máximo 6 palabras cada una) que el usuario "
-        f"podría querer decirle al asistente para avanzar la conversación. "
-        f"{'Para cotización: preguntas sobre componentes, días, cantidades.' if entrada.tipo == 't1' else 'Para ideas: pedir conceptos, buscar referencias, aterrizar.'}\n"
+        f"podría decirle al asistente para AVANZAR HACIA UNA PROPUESTA CERRADA. "
+        f"{'Para cotización: pedir opciones de presupuesto, sumar un complemento (upsell) o cerrar la propuesta.' if entrada.tipo == 't1' else 'Para ideas: pedir conceptos con recomendación, referencias, o aterrizar y cotizar la ganadora.'}\n"
         f"Responde SOLO con las 3 frases, una por línea, sin números ni viñetas."
     )
 
@@ -176,10 +176,18 @@ async def sugerencias(
 
 
 def _chips_fallback(tipo: str) -> list[str]:
-    """Chips estáticos de fallback si Haiku falla."""
+    """Chips estáticos de fallback si Haiku falla: acciones de partner comercial."""
     if tipo == "t1":
-        return ["¿Cuántos días dura?", "Arma los componentes", "Genera la propuesta"]
-    return ["Busca referencias en internet", "Dame 3 ideas de impacto", "Aterriza la idea ganadora"]
+        return [
+            "Dame 2 opciones de presupuesto",
+            "Sugiere un complemento",
+            "Genera la propuesta",
+        ]
+    return [
+        "Recomienda un concepto",
+        "Busca referencias en internet",
+        "Aterriza y cotiza la ganadora",
+    ]
 
 
 @router.post("/responder", response_model=RespuestaConversacion)

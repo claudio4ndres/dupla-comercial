@@ -82,6 +82,28 @@ _GUIA_T2 = (
     "ejecución (`proponer_tareas`)."
 )
 
+# Conducta de PARTNER COMERCIAL (spec 013), común a ambos tipos. Constante de
+# módulo SIN nada dinámico: el system prompt debe ser byte-idéntico entre turnos
+# para no invalidar el prompt caching (regla #4).
+_CONDUCTA_COMERCIAL = (
+    "CÓMO CONDUCES LA VENTA (eres un partner comercial, no un tomador de pedidos):\n"
+    "1) DESCUBRIMIENTO: antes de cotizar, verifica el brief BTL — fechas y jornadas, "
+    "lugar y permisos, público objetivo, presupuesto o rango disponible, volumen de "
+    "producto y dotación. Si falta algo crítico, pregunta lo MÁS bloqueante primero, "
+    "máximo 2 preguntas por turno (nada de interrogatorios).\n"
+    "2) OPCIONES VALORIZADAS: cuando el brief lo permita, presenta un escenario "
+    "RECOMENDADO y una alternativa (más económica o premium), cada uno con su total "
+    "estimado y los valores REALES del tarifario/Drive citados. Di claro cuál "
+    "recomiendas y por qué.\n"
+    "3) UPSELL CON CRITERIO: sugiere 1-2 complementos que suban el impacto de la "
+    "activación (medición y fotos, promotores extra, branding adicional), cada "
+    "complemento justificado por el objetivo del cliente. Nunca infles la cotización "
+    "sin razón.\n"
+    "4) CIERRE: cuando los componentes y tareas estén completos, resume el total y "
+    "propone explícitamente: «¿Genero la propuesta?». No te quedes en un loop de "
+    "preguntas: tu meta es cerrar una propuesta ejecutable."
+)
+
 _GUIA_POR_TIPO = {"t1": _GUIA_T1, "t2": _GUIA_T2}
 
 # Mapeo de roles del front al formato de Anthropic. `sistema` no se envía como turno.
@@ -92,9 +114,11 @@ _PATRON_INTERNET = re.compile(r"internet|busca|referencia|opcion|inspiraci", re.
 
 
 def _system_para(tipo: str) -> str:
-    """Arma el system prompt (persona + guía del tipo)."""
+    """Arma el system prompt (persona + conducta comercial + guía del tipo).
+
+    Determinista por tipo y SIN datos por request: estable para el caché."""
     guia = _GUIA_POR_TIPO.get(tipo, _GUIA_T1)
-    return f"{_PERSONA}\n\n{guia}"
+    return f"{_PERSONA}\n\n{_CONDUCTA_COMERCIAL}\n\n{guia}"
 
 
 def _normalizar(mensajes: list[MensajeConversacion]) -> list[dict]:
@@ -125,6 +149,34 @@ def _normalizar(mensajes: list[MensajeConversacion]) -> list[dict]:
 
 
 # ── Definición de herramientas (orden fijo: estable para la caché) ───────────
+def _tool_consultar_tarifario() -> dict:
+    return {
+        "name": "consultar_tarifario",
+        "description": (
+            "Consulta el TARIFARIO estructurado de la empresa (catálogo con valores "
+            "unitarios, unidad y proveedor). Úsala PRIMERO para precios de componentes "
+            "estándar (promotores, catering, pantallas, uniformes...): es más rápida y "
+            "ya trae el valor listo con su origen para citar. Si el ítem NO está en el "
+            "tarifario, recién ahí busca el documento en el Drive con `buscar_en_drive`."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "consulta": {
+                    "type": "string",
+                    "description": "Qué componente cotizar (ej. 'promotoras', 'catering').",
+                },
+                "tipo": {
+                    "type": "string",
+                    "enum": ["componente", "caso"],
+                    "description": "Opcional: filtra por tipo de recurso.",
+                },
+            },
+            "required": ["consulta"],
+        },
+    }
+
+
 def _tool_buscar_en_drive() -> dict:
     return {
         "name": "buscar_en_drive",
@@ -269,7 +321,13 @@ def _tool_proponer_tareas() -> dict:
 
 
 def _herramientas(permitir_internet: bool) -> list[dict]:
-    tools = [_tool_buscar_en_drive(), _tool_leer_documento_drive()]
+    # Orden FIJO (estable para la caché): el tarifario va primero para que Javo
+    # resuelva precios estándar sin dar la vuelta por el Drive (spec 013).
+    tools = [
+        _tool_consultar_tarifario(),
+        _tool_buscar_en_drive(),
+        _tool_leer_documento_drive(),
+    ]
     if permitir_internet:
         tools.append(_tool_buscar_en_internet())
     tools.append(_tool_proponer_componentes())
@@ -384,6 +442,20 @@ async def _ejecutar_herramienta(
     componentes propuestos, las tareas propuestas y las fuentes citadas."""
     nombre = getattr(bloque, "name", "")
     entrada = getattr(bloque, "input", None) or {}
+
+    if nombre == "consultar_tarifario":
+        # SIEMPRE el catálogo estructurado (tabla `catalogo`, RLS por empresa),
+        # aunque haya Drive: para precios estándar es la fuente rápida y citable.
+        if repo_catalogo is None or empresa_id is None:
+            return (
+                "Sin tarifario estructurado configurado para esta empresa. "
+                "Busca el documento en el Drive con buscar_en_drive; no inventes.",
+                usos_internet,
+            )
+        return (
+            await _buscar_en_catalogo(entrada, repo_catalogo, empresa_id, fuentes),
+            usos_internet,
+        )
 
     if nombre == "buscar_en_drive":
         # Prioriza el DRIVE REAL en vivo (todas las carpetas). Si no hay Drive cableado,
