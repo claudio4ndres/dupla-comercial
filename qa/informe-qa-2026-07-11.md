@@ -87,6 +87,31 @@ Cada fix tiene su test que falló primero (evidencia en `test_endpoint_cotizacio
 - **E2E (Playwright):** `cd apps/web && npx playwright test` — requiere `supabase start` + `supabase db reset` (seed) + backend (`uvicorn main:app`) + front (`npm run dev`). Cubre login y navegación; **no** cubre el flujo profundo (chat → propuesta → export), que sería el siguiente e2e a escribir.
 - **pgTAP (RLS real):** `supabase test db` con los 7 archivos de `supabase/tests/` — es la verificación extremo-a-extremo de que empresa A no ve datos de empresa B; la suite unitaria solo verifica los query strings.
 
+## 6-bis. Hallazgos resueltos después del QA (specs 012-017, misma rama)
+
+Tras este informe se ejecutaron 6 fases de mejora (SDD+TDD). Estado final de
+las suites: **backend 381 ✅ · frontend 180 ✅ · build ✅**.
+
+| Hallazgo | Resolución | Spec |
+|---|---|---|
+| **A-1** navegación sin rutas reales | ✅ Migración completa a React Router v7: rutas reales (`/bandeja/:id`, `/bandeja/:id/chat`, `/propuestas/:id`), rehidratación en refresh/deep-link, `useSincronizarRuta` eliminado | 016 |
+| **A-2** errores silenciados (Javo "canned", exports) | ✅ `conversarConJavoOError` + aviso con Reintentar en el chat; exports con `BannerError` | 014 |
+| **M-2** state OAuth en memoria (multi-instancia) | ✅ Tabla `estados_oauth` (migración 0012) con consumo atómico; selección por `ESTADO_OAUTH_BACKEND` | 015 |
+| **M-5** sin reintentos ante 429/529 de Anthropic | ✅ Backoff exponencial + jitter con `Retry-After` en `ClienteAnthropicHttpx` | 012 |
+| **B-1** dependencia con dato del piloto (`drive_folder_id`) | ✅ Eliminada (código muerto) con su test | 015 |
+| Latencia OAuth Gmail/Drive (canje por operación) | ✅ `CacheTokenAcceso` compartido por las fábricas (TTL `expires_in-60s`) | 015 |
+| 010-T9 mensaje por proveedor al reconectar | ✅ Tarjetas Gmail/ClickUp con mensajes de la spec 010 + botón "Probar conexión" (auto-heal) | 017 |
+| Specs 010 desfasadas | ✅ T3-T8 marcadas (ya estaban implementadas); quedan T1/T2 (🧑 publicar apps OAuth en las consolas de Google/ClickUp — acción humana, la cura de raíz del "reconectar") | — |
+
+Además, **Javo se convirtió en partner comercial** (spec 013): descubrimiento
+del brief, opciones valorizadas recomendada + alternativa, upsell con criterio,
+cierre explícito, tool `consultar_tarifario` (catálogo RLS con citas) y chips
+comerciales. Pendiente su validación humana (013-T7: sesión de chat real).
+
+Siguen abiertos: M-1 (`tipo` fabricado al abrir propuesta desde la lista),
+M-3 (`verify_aud`), M-4 (9 errores de lint preexistentes), B-2 (contraseñas
+demo en seed) y la dependencia `anthropic` sin uso en requirements.txt.
+
 ## 7. Recomendaciones priorizadas (siguientes pasos)
 
 1. Completar la migración a React Router (A-1) — ya hay 3 fases commiteadas de infraestructura.
