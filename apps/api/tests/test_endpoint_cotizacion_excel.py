@@ -151,6 +151,25 @@ def test_dias_del_componente_va_a_la_columna_dias():
         raise AssertionError("no se encontró la fila de Promotoras uniformadas")
 
 
+def test_margen_fuera_de_rango_devuelve_422():
+    # margen debe ser una fracción [0, 1): margen=1 divide por cero y margen>1
+    # produce precios negativos. El endpoint valida el rango antes de generar.
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    http = _cliente_http(repo)
+
+    assert http.get(f"/solicitudes/{sol}/cotizacion.xlsx?margen=1").status_code == 422
+    assert http.get(f"/solicitudes/{sol}/cotizacion.xlsx?margen=1.5").status_code == 422
+    assert http.get(f"/solicitudes/{sol}/cotizacion.xlsx?margen=-0.1").status_code == 422
+    # margen=1 tampoco debe romper la vista cliente (antes: ZeroDivisionError → 500).
+    assert (
+        http.get(f"/solicitudes/{sol}/cotizacion.xlsx?margen=1&vista=cliente").status_code
+        == 422
+    )
+    # El borde válido inferior sigue funcionando.
+    assert http.get(f"/solicitudes/{sol}/cotizacion.xlsx?margen=0").status_code == 200
+
+
 def test_sin_propuesta_devuelve_404():
     repo = RepositorioPropuestasEnMemoria([])
     http = _cliente_http(repo)

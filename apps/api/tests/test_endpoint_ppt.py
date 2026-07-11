@@ -112,6 +112,19 @@ def test_no_expone_costo_ni_margen():
     assert "MARGEN" not in texto.upper()
 
 
+def test_margen_fuera_de_rango_devuelve_422():
+    # margen es una fracción [0, 1): margen=1 divide por cero (ZeroDivisionError → 500)
+    # y margen>1 produce precios negativos. El endpoint valida el rango.
+    sol = uuid4()
+    repo = RepositorioPropuestasEnMemoria([_propuesta(sol)])
+    http = _cliente_http(repo)
+
+    assert http.get(f"/solicitudes/{sol}/propuesta.pptx?margen=1").status_code == 422
+    assert http.get(f"/solicitudes/{sol}/propuesta.pptx?margen=1.5").status_code == 422
+    assert http.get(f"/solicitudes/{sol}/propuesta.pptx?margen=-0.1").status_code == 422
+    assert http.get(f"/solicitudes/{sol}/propuesta.pptx?margen=0").status_code == 200
+
+
 def test_sin_propuesta_devuelve_404():
     repo = RepositorioPropuestasEnMemoria([])
     http = _cliente_http(repo)

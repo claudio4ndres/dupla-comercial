@@ -1,7 +1,7 @@
 """Rutas de solicitudes."""
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from app.dependencias import (
     obtener_cliente_anthropic,
@@ -247,7 +247,8 @@ async def transicionar_estado_propuesta(
 @router.get("/{solicitud_id}/cotizacion.xlsx")
 async def descargar_cotizacion_excel(
     solicitud_id: UUID,
-    margen: float = 0.40,
+    # Fracción de margen [0, 1): margen=1 divide por cero y >1 da precios negativos.
+    margen: float = Query(0.40, ge=0, lt=1),
     vista: str = "interno",
     repo=Depends(obtener_repositorio_propuestas),
     empresa_id: UUID = Depends(obtener_empresa_actual),
@@ -292,7 +293,8 @@ async def descargar_cotizacion_excel(
 @router.get("/{solicitud_id}/propuesta.pptx")
 async def descargar_propuesta_ppt(
     solicitud_id: UUID,
-    margen: float = 0.40,
+    # Fracción de margen [0, 1): margen=1 divide por cero y >1 da precios negativos.
+    margen: float = Query(0.40, ge=0, lt=1),
     repo=Depends(obtener_repositorio_propuestas),
     empresa_id: UUID = Depends(obtener_empresa_actual),
 ) -> Response:
