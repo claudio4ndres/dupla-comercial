@@ -21,11 +21,12 @@ class RepositorioSolicitudesSupabase(ClientePostgREST):
     """Repositorio `RepositorioSolicitudes` respaldado por PostgREST de Supabase."""
 
     async def obtener(self, solicitud_id: UUID, empresa_id: UUID) -> Solicitud | None:
-        # La RLS ya restringe a la empresa del JWT; no hace falta filtrar por
-        # empresa_id en el backend (regla #2). Filtramos por id y pedimos la fila.
+        # Con JWT la RLS ya restringe a la empresa; el filtro explícito es defensa
+        # en profundidad (mismo criterio que listar/actualizar_estado) y la única
+        # barrera si el repo se construye con service-role.
         resp = await self._peticion(
             "GET",
-            f"/solicitudes?id=eq.{solicitud_id}&select=*",
+            f"/solicitudes?id=eq.{solicitud_id}&empresa_id=eq.{empresa_id}&select=*",
             headers=self._headers(),
         )
         resp.raise_for_status()
@@ -89,9 +90,10 @@ class RepositorioSolicitudesSupabase(ClientePostgREST):
     async def guardar_clasificacion(
         self, solicitud_id: UUID, empresa_id: UUID, resumen: str, tipo: str
     ) -> Solicitud:
+        # Defensa en profundidad: filtro por empresa explícito además de la RLS.
         resp = await self._peticion(
             "PATCH",
-            f"/solicitudes?id=eq.{solicitud_id}",
+            f"/solicitudes?id=eq.{solicitud_id}&empresa_id=eq.{empresa_id}",
             headers=self._headers({"Prefer": "return=representation"}),
             json={"resumen": resumen, "tipo": tipo},
         )

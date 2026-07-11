@@ -55,6 +55,9 @@ async def test_obtener_manda_jwt_del_usuario_y_mapea_la_fila():
     assert visto["apikey"] == ANON
     assert "/rest/v1/solicitudes" in visto["url"]
     assert f"id=eq.{sol_id}" in visto["url"]
+    # Defensa en profundidad: además de la RLS, el filtro explícito por empresa
+    # (igual que listar/actualizar_estado) protege si el repo se usa con service-role.
+    assert f"empresa_id=eq.{EMPRESA}" in visto["url"]
     assert sol is not None and sol.cuerpo == "quiero un sampling"
 
 
@@ -91,6 +94,8 @@ async def test_guardar_clasificacion_hace_patch_y_devuelve_actualizada():
 
     assert visto["method"] == "PATCH"
     assert f"id=eq.{sol_id}" in visto["url"]
+    # Defensa en profundidad: el PATCH también filtra por empresa explícita.
+    assert f"empresa_id=eq.{EMPRESA}" in visto["url"]
     assert "un resumen" in visto["body"] and "tipo_1" in visto["body"]
     # No cambia el estado al clasificar (regla de la spec 001).
     assert sol.estado == "nueva" and sol.tipo == "tipo_1" and sol.resumen == "un resumen"
