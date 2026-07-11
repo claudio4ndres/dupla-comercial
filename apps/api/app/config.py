@@ -42,11 +42,6 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = ""
 
-    # Carpeta del Google Drive de la empresa de donde se leen los recursos del
-    # catálogo (panel "Recursos · Drive"). Default: la carpeta REAL del cliente
-    # piloto (Capsulab). Se sobreescribe por empresa/entorno con `DRIVE_FOLDER_ID`.
-    drive_folder_id: str = "1sPeaZbXVi4q-eXNkwGTTpaZUgKNuhy1i"
-
     # Service role key de Supabase (Settings → API). SÓLO backend/poller: salta la
     # RLS, por eso el poller fija `empresa_id` explícito en cada fila (TR3). NUNCA
     # exponer al front.
@@ -68,6 +63,12 @@ class Settings(BaseSettings):
     # (desarrollo, sin nube ni paquete `google`). Default seguro hacia prod; el
     # `.env` local define `SECRETOS_BACKEND=archivo`.
     secretos_backend: str = "gcp"
+
+    # Backend del almacén del `state` anti-CSRF del OAuth (spec 015). "supabase"
+    # (default, producción) → tabla `estados_oauth` (sobrevive reinicios y
+    # multi-instancia); "memoria" → dict del proceso (desarrollo local de una
+    # sola instancia). El `.env` local puede definir ESTADO_OAUTH_BACKEND=memoria.
+    estado_oauth_backend: str = "supabase"
 
     # Ruta del archivo cuando `secretos_backend="archivo"` (relativa al CWD del
     # backend, que corre desde `apps/api`). Gitignored.

@@ -133,6 +133,7 @@ class ClienteGmailReal:
         casilla: str | None = None,
         cliente: httpx.AsyncClient | None = None,
         ventana_inicial_dias: int = 1,
+        cache=None,
     ) -> None:
         self._almacen = almacen
         self._token_ref = token_ref
@@ -141,12 +142,18 @@ class ClienteGmailReal:
         self.casilla = casilla
         self._cliente = cliente
         self._ventana = ventana_inicial_dias
+        self._cache = cache  # CacheTokenAcceso opcional (spec 015)
 
     def _http(self) -> httpx.AsyncClient:
         return self._cliente or httpx.AsyncClient()
 
     async def _access_token(self, http: httpx.AsyncClient) -> str:
-        """Canjea el refresh token por un access token efímero (refresh OAuth)."""
+        """Canjea el refresh token por un access token efímero (refresh OAuth).
+        Con cache (spec 015) reutiliza el token vigente entre pases del poller."""
+        if self._cache is not None:
+            en_cache = self._cache.obtener(self._token_ref)
+            if en_cache:
+                return en_cache
         refresh = await self._almacen.obtener(self._token_ref)
         if not refresh:
             raise ErrorAutenticacionGmail("No hay refresh token guardado")
@@ -163,9 +170,14 @@ class ClienteGmailReal:
             raise ErrorAutenticacionGmail(
                 f"Refresh rechazado por Google ({resp.status_code})"
             )
-        access = resp.json().get("access_token")
+        datos = resp.json()
+        access = datos.get("access_token")
         if not access:
             raise ErrorAutenticacionGmail("Google no devolvió access_token")
+        if self._cache is not None:
+            self._cache.guardar(
+                self._token_ref, access, expires_in=datos.get("expires_in", 3600)
+            )
         return access
 
     async def listar_nuevos(
@@ -310,11 +322,13 @@ class FabricaClienteGmailReal:
         client_id: str,
         client_secret: str,
         cliente: httpx.AsyncClient | None = None,
+        cache=None,
     ) -> None:
         self._almacen = almacen
         self._client_id = client_id
         self._client_secret = client_secret
         self._cliente = cliente
+        self._cache = cache  # compartido entre casillas: la clave es el token_ref
 
     def crear(self, integracion: Integracion) -> ClienteGmail:
         return ClienteGmailReal(
@@ -324,6 +338,7 @@ class FabricaClienteGmailReal:
             client_secret=self._client_secret,
             casilla=integracion.casilla,
             cliente=self._cliente,
+            cache=self._cache,
             # Primer sync: 1 año hacia atrás para traer la correspondencia REAL ya
             # existente del inbox (no solo lo que llegue post-conexión). El tope de
             # `maxResults=50` acota cuántos se ingieren; los siguientes polls son

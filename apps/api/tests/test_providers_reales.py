@@ -29,6 +29,7 @@ from app.dependencias import (
     obtener_secreto_poller,
 )
 from app.repositorios.estado_oauth import AlmacenEstadoOAuthEnMemoria
+from app.repositorios.estado_oauth_supabase import AlmacenEstadoOAuthSupabase
 from app.repositorios.integraciones_supabase import RepositorioIntegracionesSupabase
 from app.repositorios.solicitudes_supabase import RepositorioSolicitudesSupabase
 from app.servicios.gmail_real import FabricaClienteGmailReal
@@ -145,12 +146,21 @@ def test_fabrica_gmail_real_comparte_el_almacen_de_secretos():
     assert fabrica._client_secret == "google-client-secret"
 
 
-def test_almacen_estado_oauth_es_singleton():
-    # Debe sobrevivir entre el `iniciar` y el `callback` (mismo proceso).
+def test_almacen_estado_oauth_default_es_supabase_y_singleton(monkeypatch):
+    # Spec 015: por defecto el state vive en la tabla `estados_oauth` (service
+    # role), así el callback puede aterrizar en CUALQUIER instancia de Cloud Run.
     a = obtener_almacen_estado_oauth()
     b = obtener_almacen_estado_oauth()
-    assert isinstance(a, AlmacenEstadoOAuthEnMemoria)
-    assert a is b
+    assert isinstance(a, AlmacenEstadoOAuthSupabase)
+    assert a is b  # singleton: sobrevive entre `iniciar` y `callback`
+
+
+def test_almacen_estado_oauth_memoria_para_desarrollo(monkeypatch):
+    # ESTADO_OAUTH_BACKEND=memoria → dict del proceso (desarrollo de una instancia).
+    monkeypatch.setenv("ESTADO_OAUTH_BACKEND", "memoria")
+    obtener_settings.cache_clear()
+    obtener_almacen_estado_oauth.cache_clear()
+    assert isinstance(obtener_almacen_estado_oauth(), AlmacenEstadoOAuthEnMemoria)
 
 
 def test_secreto_poller_viene_de_settings():

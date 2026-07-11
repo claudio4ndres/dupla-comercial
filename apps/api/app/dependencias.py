@@ -14,6 +14,8 @@ from fastapi import Depends, Header, HTTPException, status
 from app.config import obtener_settings
 from app.http_pool import cliente_http_compartido
 from app.repositorios.estado_oauth import AlmacenEstadoOAuthEnMemoria
+from app.repositorios.estado_oauth_supabase import AlmacenEstadoOAuthSupabase
+from app.servicios.cache_token_acceso import CacheTokenAcceso
 from app.repositorios.catalogo_supabase import RepositorioCatalogoSupabase
 from app.repositorios.conversaciones_supabase import RepositorioConversacionesSupabase
 from app.repositorios.integraciones_supabase import RepositorioIntegracionesSupabase
@@ -188,12 +190,25 @@ def obtener_repositorio_solicitudes_servicio() -> RepositorioSolicitudesSupabase
 
 
 @lru_cache
-def obtener_almacen_estado_oauth() -> AlmacenEstadoOAuthEnMemoria:
-    """Almacén del `state` anti-CSRF del OAuth. Singleton de proceso (`lru_cache`) para
-    que el `state` creado en `iniciar` siga vivo cuando vuelve el `callback`. En memoria
-    alcanza para un proceso; si se escala a varias instancias, migrar a Supabase/Redis
-    (no cambia el contrato). En tests se sobrescribe."""
-    return AlmacenEstadoOAuthEnMemoria()
+def obtener_almacen_estado_oauth():
+    """Almacén del `state` anti-CSRF del OAuth, elegido por `ESTADO_OAUTH_BACKEND`
+    (spec 015, espejo de `SECRETOS_BACKEND`):
+
+    * `"supabase"` (default, producción) → tabla `estados_oauth` con service role:
+      el state sobrevive reinicios y el callback puede aterrizar en CUALQUIER
+      instancia de Cloud Run (consumo atómico anti-replay).
+    * `"memoria"` (desarrollo local de una sola instancia) → dict del proceso.
+
+    Singleton (`lru_cache`) para reusar el cliente HTTP. En tests se sobrescribe."""
+    settings = obtener_settings()
+    if settings.estado_oauth_backend.lower() == "memoria":
+        return AlmacenEstadoOAuthEnMemoria()
+    return AlmacenEstadoOAuthSupabase(
+        settings.supabase_url,
+        settings.supabase_service_role_key,
+        settings.supabase_service_role_key,
+        cliente=cliente_http_compartido,
+    )
 
 
 def obtener_config_oauth_gmail() -> ConfigOAuthGmail:
@@ -257,14 +272,24 @@ def obtener_almacen_secretos() -> AlmacenSecretos:
     return AlmacenSecretosSecretManager(settings.gcp_project_id)
 
 
+@lru_cache
+def obtener_cache_token_acceso() -> CacheTokenAcceso:
+    """Cache en proceso del access token de Google (spec 015), COMPARTIDO por las
+    fábricas de Gmail y Drive (la clave es el `token_ref` de cada empresa): evita
+    canjear el refresh en cada operación. Best-effort: multi-instancia no lo rompe."""
+    return CacheTokenAcceso()
+
+
 def obtener_fabrica_cliente_gmail() -> FabricaClienteGmailReal:
     """Fábrica real (token_ref → cliente Gmail, TR1). Comparte el almacén de secretos
-    singleton para resolver el refresh de cada casilla (regla de oro #3)."""
+    singleton para resolver el refresh de cada casilla (regla de oro #3) y el cache
+    de access tokens (spec 015)."""
     settings = obtener_settings()
     return FabricaClienteGmailReal(
         almacen=obtener_almacen_secretos(),
         client_id=settings.google_client_id,
         client_secret=settings.google_client_secret,
+        cache=obtener_cache_token_acceso(),
     )
 
 
@@ -278,6 +303,7 @@ def obtener_fabrica_cliente_drive() -> FabricaClienteDriveReal:
         almacen=obtener_almacen_secretos(),
         client_id=settings.google_client_id,
         client_secret=settings.google_client_secret,
+        cache=obtener_cache_token_acceso(),
     )
 
 

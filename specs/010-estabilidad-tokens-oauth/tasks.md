@@ -59,7 +59,7 @@ código (verde), luego refactor. Tareas pequeñas, commit por tarea (en español
 > Un único punto reutilizable que ambos sitios (ingesta + poller) llaman; el test lo
 > verifica en un solo lugar. **Best-effort:** si la alerta falla, NO rompe la ingesta.
 
-- [ ] **T3 · 🤖 Módulo de observabilidad: `avisar_reconectar(empresa_id, proveedor, motivo)`.**
+- [x] **T3 · 🤖 Módulo de observabilidad: `avisar_reconectar(empresa_id, proveedor, motivo)`.**
   Nuevo `app/servicios/observabilidad.py` con la función que emite un **log estructurado**
   (nivel `warning`) con `empresa_id`, `proveedor` y `motivo`, **sin token alguno** (regla de
   oro #3). Best-effort: si el logging revienta, **traga** la excepción (no propaga) para no
@@ -68,7 +68,7 @@ código (verde), luego refactor. Tareas pequeñas, commit por tarea (en español
     `proveedor` y `motivo`; el record **no** contiene ningún token/`token_ref`. Si se fuerza
     un fallo del logger, `avisar_reconectar` **no** lanza.
 
-- [ ] **T4 · 🤖 Emitir la alerta en la INGESTA (`servicios/ingesta_correo.py`).**
+- [x] **T4 · 🤖 Emitir la alerta en la INGESTA (`servicios/ingesta_correo.py`).**
   En el `except ErrorAutenticacionGmail` (donde ya se marca `reconectar`), llamar a
   `avisar_reconectar(empresa_id, "gmail", "auth_invalida")` **antes/después** de
   `marcar_estado`, sin cambiar el comportamiento observable (sigue devolviendo
@@ -77,7 +77,7 @@ código (verde), luego refactor. Tareas pequeñas, commit por tarea (en español
     → la integración queda `reconectar`, **se emitió** la alerta con `empresa_id`+`gmail`+
     `motivo` y **sin token**, y la ingesta **no** lanzó.
 
-- [ ] **T5 · 🤖 Emitir la alerta en el POLLER (`rutas/interno.py`).**
+- [x] **T5 · 🤖 Emitir la alerta en el POLLER (`rutas/interno.py`).**
   En el `except ErrorAutenticacionGmail` del poller (mismo patrón), llamar a
   `avisar_reconectar(integracion.empresa_id, "gmail", "auth_invalida")`. Best-effort:
   envuelto de forma que un fallo de la alerta **no** tumbe el poll de las demás empresas
@@ -94,7 +94,7 @@ código (verde), luego refactor. Tareas pequeñas, commit por tarea (en español
 > `(empresa_id, proveedor, estado)` de las `reconectar` — **nunca** `token_ref` ni datos de
 > negocio. **Sin `desde`** (no se arrastra migración; decisión de la spec/plan).
 
-- [ ] **T6 · 🤖 `listar_por_estado(estado)` en el repositorio de integraciones.**
+- [x] **T6 · 🤖 `listar_por_estado(estado)` en el repositorio de integraciones.**
   Añadir el método al `Protocol RepositorioIntegraciones` + a la versión **en memoria**
   (`RepositorioIntegracionesEnMemoria`) + a la versión **Supabase**
   (`RepositorioIntegracionesSupabase`, PostgREST `?estado=eq.<estado>`). Devuelve la lista de
@@ -106,7 +106,7 @@ código (verde), luego refactor. Tareas pequeñas, commit por tarea (en español
     `/rest/v1/integraciones` con `estado=eq.reconectar`, manda apikey + bearer, mapea a
     `Integracion`.
 
-- [ ] **T7 · 🤖 Endpoint `GET /interno/conectores/reconectar` (CA3).**
+- [x] **T7 · 🤖 Endpoint `GET /interno/conectores/reconectar` (CA3).**
   En `rutas/interno.py`, protegido por `verificar_credencial_servicio`. Usa
   `listar_por_estado("reconectar")` y responde con un **`response_model` Pydantic** nuevo
   (`ConectorReconectar { empresa_id, proveedor, estado }`) — así FastAPI **descarta**
@@ -122,7 +122,7 @@ código (verde), luego refactor. Tareas pequeñas, commit por tarea (en español
 
 ## D. No-regresión + cierre (🤖 · AHORA)
 
-- [ ] **T8 · 🤖 No-regresión (CA7).** Correr `.venv/bin/python -m pytest -q` y confirmar que
+- [x] **T8 · 🤖 No-regresión (CA7).** Correr `.venv/bin/python -m pytest -q` y confirmar que
   **toda** la suite existente (ingesta, poller, repos, endpoints) sigue **verde**: la alerta y
   el endpoint nuevo **no** cambian el comportamiento observable previo y **no** exponen tokens.
 
