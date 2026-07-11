@@ -24,23 +24,18 @@ vi.mock('./api/usuario', () => ({
   marcarOnboardingVisto: vi.fn().mockResolvedValue(undefined),
 }))
 
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import { supabase } from './supabase/cliente'
-import App from './App'
-import { SesionProvider } from './contextos/SesionContext'
-import { SolicitudProvider } from './contextos/SolicitudContext'
-import { BandejaProvider } from './contextos/BandejaContext'
+import { crearRutas } from './router'
 
-/** Helper: renderiza App envuelto en los tres providers (requerido tras la extracción de contextos). */
+/**
+ * Helper: monta el árbol REAL de rutas (016) en un router de memoria arrancando
+ * en "/" (los providers viven dentro del router, en Raiz). Es el equivalente al
+ * antiguo render de <App/> con el switch por pantalla.
+ */
 function renderApp(props?: { onNavegar?: (url: string) => void }) {
-  return render(
-    <SesionProvider>
-      <SolicitudProvider>
-        <BandejaProvider>
-          <App {...props} />
-        </BandejaProvider>
-      </SolicitudProvider>
-    </SesionProvider>,
-  )
+  const router = createMemoryRouter(crearRutas(props?.onNavegar), { initialEntries: ['/'] })
+  return render(<RouterProvider router={router} />)
 }
 
 // Alias tipado para acceder a los mocks sin castings repetitivos.
@@ -89,10 +84,8 @@ async function entrarABandeja(user: ReturnType<typeof userEvent.setup>) {
 
 describe('App (arnés)', () => {
   beforeEach(() => {
-    // Aislamiento: useSincronizarRuta hace pushState (NO es no-op en jsdom), así que
-    // la URL se filtra entre tests. Reseteamos a "/" para que cada test arranque en la
-    // pantalla por defecto (configuracion) y no herede la ruta del test anterior.
-    window.history.replaceState(null, '', '/')
+    // Cada test crea su propio createMemoryRouter arrancando en "/" (renderApp),
+    // así que la ruta NO se filtra entre tests (la URL del jsdom no se usa).
     authStateCallback = null
     mockAuth.getSession.mockResolvedValue({ data: { session: null } })
     mockAuth.signInWithPassword.mockResolvedValue({ error: null })
@@ -423,6 +416,10 @@ describe('App (arnés)', () => {
     // Genera la propuesta: el front pide la cotización real al backend.
     await user.click(screen.getByRole('button', { name: /Generar propuesta/i }))
 
+    // Espera la pantalla de la propuesta: la navegación del router es asíncrona
+    // y, sin esto, el matcher podía encontrar el componente en el panel del chat
+    // justo antes de que se desmontara.
+    expect(await screen.findByRole('heading', { name: /Propuesta resuelta/i })).toBeInTheDocument()
     // La tabla muestra el componente del backend, NO el mock de sopaipillas.
     expect(await screen.findByText(/Promotoras uniformadas/i)).toBeInTheDocument()
     expect(screen.queryByText(/Catering sopaipillas/i)).not.toBeInTheDocument()

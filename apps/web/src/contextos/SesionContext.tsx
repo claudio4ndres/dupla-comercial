@@ -1,7 +1,11 @@
 // SesionContext — Contexto de sesión, empresa activa y navegación de layout.
 // Extracción desde App.tsx (Iteración 1 del refactor de contextos).
+// Spec 016: la navegación ahora es por URL (React Router v7). `pantalla` se
+// DERIVA de la ruta activa e `irA` navega con useNavigate — el provider debe
+// montarse DENTRO del router (ver `Raiz` en router.tsx).
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import { supabase } from '../supabase/cliente'
 import { obtenerEmpresa } from '../api/empresa'
 import { obtenerUsuario, marcarOnboardingVisto } from '../api/usuario'
@@ -9,6 +13,38 @@ import type { Empresa, Pantalla, Sesion } from '../tipos'
 
 /** Valor por defecto neutro mientras el backend aún no responde con la empresa real. */
 const EMPRESA_POR_DEFECTO: Empresa = { nombre: '', color: '#cccccc', marca: '?', etiqueta: '' }
+
+/** Mapeo pantalla → ruta. `detail`/`chat`/`propuesta` necesitan el id de la
+ * solicitud; sin id caen a la lista correspondiente (no hay a qué apuntar). */
+function rutaDePantalla(p: Pantalla, id?: string): string {
+  switch (p) {
+    case 'inbox':
+      return '/bandeja'
+    case 'detail':
+      return id ? `/bandeja/${id}` : '/bandeja'
+    case 'chat':
+      return id ? `/bandeja/${id}/chat` : '/bandeja'
+    case 'propuestas':
+      return '/propuestas'
+    case 'propuesta':
+      return id ? `/propuestas/${id}` : '/propuestas'
+    case 'tareas':
+      return '/tareas'
+    default:
+      return '/configuracion'
+  }
+}
+
+/** Mapeo inverso: la pantalla activa se deriva de la URL (fuente de verdad). */
+function pantallaDeRuta(pathname: string): Pantalla {
+  if (/^\/bandeja\/[^/]+\/chat\/?$/.test(pathname)) return 'chat'
+  if (/^\/bandeja\/[^/]+\/?$/.test(pathname)) return 'detail'
+  if (/^\/bandeja\/?$/.test(pathname)) return 'inbox'
+  if (/^\/propuestas\/[^/]+\/?$/.test(pathname)) return 'propuesta'
+  if (/^\/propuestas\/?$/.test(pathname)) return 'propuestas'
+  if (/^\/tareas\/?$/.test(pathname)) return 'tareas'
+  return 'configuracion'
+}
 
 // ── Interfaz del valor expuesto ──────────────────────────────────────────────
 
@@ -18,9 +54,10 @@ export interface SesionContextValor {
   empresa: Empresa
   setEmpresa: (e: Empresa) => void
   cerrarSesion: () => Promise<void>
-  /** Pantalla activa (router simple por estado) */
+  /** Pantalla activa (derivada de la URL del router) */
   pantalla: Pantalla
-  irA: (p: Pantalla) => void
+  /** Navega a una pantalla; `detail`/`chat`/`propuesta` reciben el id de la solicitud. */
+  irA: (p: Pantalla, id?: string) => void
   /** true cuando el usuario aún no vio el onboarding de bienvenida (slider 1 vez). */
   bienvenidaPendiente: boolean
   /** Marca el onboarding como visto (backend) y oculta el slider. */
@@ -37,8 +74,10 @@ export function SesionProvider({ children }: { children: ReactNode }) {
   // Estado de autenticación: undefined = aún no sé, null = sin sesión
   const [sesion, setSesion] = useState<Sesion | null | undefined>(undefined)
   const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_POR_DEFECTO)
-  // Landing post-login: configuración (onboarding de conectores)
-  const [pantalla, setPantalla] = useState<Pantalla>('configuracion')
+  // Navegación real (spec 016): la URL es la fuente de verdad de la pantalla.
+  const navigate = useNavigate()
+  const location = useLocation()
+  const pantalla = pantallaDeRuta(location.pathname)
   // Slider de bienvenida: se muestra una sola vez por usuario (gate: onboarding_visto).
   const [bienvenidaPendiente, setBienvenidaPendiente] = useState(false)
 
@@ -83,10 +122,12 @@ export function SesionProvider({ children }: { children: ReactNode }) {
   // ─── Cerrar sesión ─────────────────────────────────────────────────────────
   const cerrarSesion = async () => {
     await supabase.auth.signOut()
+    // Vuelve a la raíz (login) sin dejar la ruta privada en el historial.
+    navigate('/', { replace: true })
   }
 
-  // ─── Navegación simple ─────────────────────────────────────────────────────
-  const irA = (p: Pantalla) => setPantalla(p)
+  // ─── Navegación: pantalla → ruta del router ────────────────────────────────
+  const irA = (p: Pantalla, id?: string) => navigate(rutaDePantalla(p, id))
 
   // ─── Cerrar el onboarding de bienvenida: persiste (best-effort) y oculta ────
   const cerrarBienvenida = () => {

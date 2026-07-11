@@ -39,6 +39,9 @@ export interface SolicitudContextValor {
   /** Reenvía el último turno fallido SIN duplicar el mensaje del usuario (014). */
   reintentarMensaje: () => Promise<void>
   generarPropuesta: () => Promise<void>
+  /** Rehidrata el chat en un deep-link/refresh (016): historial + cotización en
+   * curso persistidos, SIN pedir un saludo nuevo (no llama a iniciarConversacion). */
+  rehidratarChat: (solicitudId: string) => Promise<void>
   setTareas: (tareas: Tarea[]) => void
   // Setters expuestos para que App.tsx los use (abrirPropuestaDesdeLista)
   setSolicitudActual: (s: Solicitud | null) => void
@@ -78,7 +81,7 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
 
   function abrirSolicitud(s: Solicitud) {
     setSolicitudActual(s)
-    irA('detail')
+    irA('detail', s.id)
   }
 
   // ─── Iniciar chat: limpiar estado, intro de Javo desde backend, rehidratar ──
@@ -93,7 +96,7 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
     setMensajes([])
     setChips([])
     setEnviando(true)
-    irA('chat')
+    irA('chat', sol.id)
 
     // Pide el saludo inicial de Javo al backend
     iniciarConversacion(sol.id, t)
@@ -128,6 +131,22 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
         if (prop && prop.componentes.length) setComponentes(prop.componentes)
       })
     })
+  }
+
+  // ─── Rehidratar el chat en deep-link / refresh (016) ───────────────────────
+  // A diferencia de iniciarChat, NO limpia el estado ni pide el saludo inicial:
+  // solo repuebla lo persistido (hilo + borrador de cotización) para que la
+  // conversación sobreviva a una recarga o a un link compartido.
+
+  async function rehidratarChat(solicitudId: string) {
+    const [historial, cot] = await Promise.all([
+      obtenerHistorialConversacion(solicitudId),
+      obtenerCotizacionEnCurso(solicitudId),
+    ])
+    if (historial.length) setMensajes(historial)
+    if (cot.componentes.length) setComponentes(cot.componentes)
+    if (cot.tareas.length) setTareas(cot.tareas)
+    if (cot.fuentes.length) setFuentes(cot.fuentes)
   }
 
   // ─── Enviar mensaje al chat con Javo ───────────────────────────────────────
@@ -195,7 +214,7 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
         setTareas(previa.tareas)
       }
     }
-    irA('propuesta')
+    irA('propuesta', solicitudActual.id)
   }
 
   // ─── Valor del contexto ────────────────────────────────────────────────────
@@ -216,6 +235,7 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
     enviarMensaje,
     reintentarMensaje,
     generarPropuesta,
+    rehidratarChat,
     setTareas,
     setSolicitudActual,
     setComponentes,

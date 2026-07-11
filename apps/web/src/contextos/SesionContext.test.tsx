@@ -1,5 +1,6 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router'
 
 // ── Mock de Supabase (mismo patrón que App.test.tsx) ─────────────────────────
 vi.mock('../supabase/cliente', () => ({
@@ -40,10 +41,13 @@ describe('SesionContext', () => {
   it('montado dentro del provider, devuelve las propiedades esperadas', () => {
     let valor: ReturnType<typeof useSesion> | null = null
 
+    // El provider navega con useNavigate (016): necesita un router alrededor.
     render(
-      <SesionProvider>
-        <Consumidor onValor={(v) => { valor = v }} />
-      </SesionProvider>,
+      <MemoryRouter>
+        <SesionProvider>
+          <Consumidor onValor={(v) => { valor = v }} />
+        </SesionProvider>
+      </MemoryRouter>,
     )
 
     // Verificar que todas las propiedades del contrato existen

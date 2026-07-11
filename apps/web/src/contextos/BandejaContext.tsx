@@ -181,7 +181,7 @@ export function BandejaProvider({ children }: { children: ReactNode }) {
       puntos: [],
       cuerpo: '',
     })
-    irA('propuesta')
+    irA('propuesta', solicitudId)
   }
 
   // ─── Valor del contexto ────────────────────────────────────────────────────

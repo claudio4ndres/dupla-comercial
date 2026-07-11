@@ -1,20 +1,11 @@
-// RedireccionRaiz — Redirige "/" según el estado de sesión.
-// Con sesión → /bandeja | Sin sesión → /login | Resolviendo → null
-// Se conectará al router cuando se migre main.tsx a RouterProvider.
+// RedireccionRaiz — Redirige "/" a la landing de la app (spec 016).
+// Vive bajo RutaProtegida, así que aquí SIEMPRE hay sesión: el landing
+// post-login es Configuración (onboarding de conectores), igual que antes
+// de la migración al router.
 
 import { Navigate } from 'react-router'
-import { useSesion } from '../contextos/SesionContext'
 
-/**
- * Componente para la ruta raíz `/`.
- * Redirige al usuario al lugar correcto según su sesión.
- */
+/** Componente para la ruta raíz `/`: manda al usuario a su landing. */
 export function RedireccionRaiz() {
-  const { sesion } = useSesion()
-
-  // Aún resolviendo — sin flash
-  if (sesion === undefined) return null
-
-  // Con sesión → bandeja; sin sesión → login
-  return <Navigate to={sesion ? '/bandeja' : '/login'} replace />
+  return <Navigate to="/configuracion" replace />
 }

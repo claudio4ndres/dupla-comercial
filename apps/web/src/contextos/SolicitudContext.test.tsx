@@ -1,5 +1,6 @@
 import { act, render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router'
 import type { Solicitud } from '../tipos'
 
 // ── Mock de Supabase (mismo patrón que SesionContext.test.tsx) ────────────────
@@ -60,12 +61,15 @@ describe('SolicitudContext', () => {
   it('montado dentro del provider, devuelve las propiedades esperadas', () => {
     let valor: ReturnType<typeof useSolicitud> | null = null
 
+    // Los contextos navegan con useNavigate (016): necesitan un router alrededor.
     render(
-      <SesionProvider>
-        <SolicitudProvider>
-          <Consumidor onValor={(v) => { valor = v }} />
-        </SolicitudProvider>
-      </SesionProvider>,
+      <MemoryRouter>
+        <SesionProvider>
+          <SolicitudProvider>
+            <Consumidor onValor={(v) => { valor = v }} />
+          </SolicitudProvider>
+        </SesionProvider>
+      </MemoryRouter>,
     )
 
     // Verificar que todas las propiedades del contrato existen
@@ -119,11 +123,13 @@ describe('SolicitudContext', () => {
     }
 
     render(
-      <SesionProvider>
-        <SolicitudProvider>
-          <Doble onValor={(v, p) => { valor = v; pantalla = p }} />
-        </SolicitudProvider>
-      </SesionProvider>,
+      <MemoryRouter>
+        <SesionProvider>
+          <SolicitudProvider>
+            <Doble onValor={(v, p) => { valor = v; pantalla = p }} />
+          </SolicitudProvider>
+        </SesionProvider>
+      </MemoryRouter>,
     )
 
     act(() => valor!.abrirSolicitud(solicitud))
@@ -162,11 +168,13 @@ describe('SolicitudContext', () => {
     }
 
     render(
-      <SesionProvider>
-        <SolicitudProvider>
-          <Doble onValor={(v) => { valor = v }} />
-        </SolicitudProvider>
-      </SesionProvider>,
+      <MemoryRouter>
+        <SesionProvider>
+          <SolicitudProvider>
+            <Doble onValor={(v) => { valor = v }} />
+          </SolicitudProvider>
+        </SesionProvider>
+      </MemoryRouter>,
     )
 
     act(() => valor!.abrirSolicitud(solicitud))
