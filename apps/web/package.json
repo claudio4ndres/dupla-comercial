@@ -11,8 +11,9 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e": "playwright test --project=ui",
+    "test:e2e:ui": "playwright test --project=ui --ui",
+    "test:e2e:real": "E2E_STACK=real playwright test --project=setup --project=real"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.9",
