@@ -1,5 +1,6 @@
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import type { Solicitud } from '../tipos'
 
 // ── Mock de Supabase (mismo patrón que SesionContext.test.tsx) ────────────────
 vi.mock('../supabase/cliente', () => ({
@@ -21,9 +22,15 @@ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
   json: () => Promise.resolve([]),
 }))
 
+// ── Mock del cliente de propuestas (para simular fallo del guardado) ─────────
+vi.mock('../api/propuestas', () => ({
+  guardarPropuesta: vi.fn().mockResolvedValue(null),
+  obtenerPropuesta: vi.fn().mockResolvedValue(null),
+}))
+
 // Importamos los módulos (SolicitudContext aún NO existe — paso rojo del TDD)
 import { SolicitudProvider, useSolicitud } from './SolicitudContext'
-import { SesionProvider } from './SesionContext'
+import { SesionProvider, useSesion } from './SesionContext'
 
 // ── Componente auxiliar para consumir el hook en los tests ────────────────────
 function Consumidor({ onValor }: { onValor: (v: ReturnType<typeof useSolicitud>) => void }) {
@@ -81,5 +88,51 @@ describe('SolicitudContext', () => {
     expect(typeof valor!.enviarMensaje).toBe('function')
     expect(typeof valor!.generarPropuesta).toBe('function')
     expect(typeof valor!.setTareas).toBe('function')
+  })
+
+  it('si guardar la propuesta falla, NO navega y avisa en el chat', async () => {
+    // Bug QA: antes navegaba a la pantalla propuesta aunque el POST fallara,
+    // mostrando una propuesta que "desaparecía" al recargar (no persistida).
+    const solicitud: Solicitud = {
+      id: 'espiga',
+      remitente: 'Zona Espiga',
+      correo: 'contacto@zonaespiga.cl',
+      tiempo: '09-jun',
+      asunto: 'Sampling de sopaipillas',
+      tipo: 't1',
+      resumen: 'Sampling afuera del Metro.',
+      puntos: [],
+      cuerpo: 'Hola Javo, queremos cotizar un sampling.',
+    }
+
+    let valor: ReturnType<typeof useSolicitud>
+    let pantalla = ''
+    function Doble({ onValor }: { onValor: (v: ReturnType<typeof useSolicitud>, p: string) => void }) {
+      onValor(useSolicitud(), useSesion().pantalla)
+      return null
+    }
+
+    render(
+      <SesionProvider>
+        <SolicitudProvider>
+          <Doble onValor={(v, p) => { valor = v; pantalla = p }} />
+        </SolicitudProvider>
+      </SesionProvider>,
+    )
+
+    act(() => valor!.abrirSolicitud(solicitud))
+    act(() => valor!.setComponentes([
+      { nombre: 'Catering', detalle: 'Té + bocados', cantidad: 1, dias: 1, valor: 380000 },
+    ]))
+    await act(async () => { await valor!.generarPropuesta() })
+
+    // guardarPropuesta (mockeado) devolvió null → nos quedamos donde estábamos…
+    expect(pantalla).not.toBe('propuesta')
+    // …y el usuario recibe feedback del fallo en el hilo del chat.
+    expect(
+      valor!.mensajes.some(
+        (m) => m.rol === 'sistema' && /no se pudo guardar/i.test(m.contenido),
+      ),
+    ).toBe(true)
   })
 })

@@ -149,13 +149,25 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
 
   async function generarPropuesta() {
     if (!solicitudActual) return
-    const guardada =
-      componentes.length || tareas.length
-        ? await guardarPropuesta(solicitudActual.id, tipo, componentes, tareas)
-        : await obtenerPropuesta(solicitudActual.id)
-    if (guardada) {
+    if (componentes.length || tareas.length) {
+      const guardada = await guardarPropuesta(solicitudActual.id, tipo, componentes, tareas)
+      if (!guardada) {
+        // El POST falló: no navegamos con una propuesta NO persistida (que
+        // "desaparecería" al recargar). Avisamos en el hilo y el usuario reintenta.
+        setMensajes((prev) => [...prev, {
+          rol: 'sistema',
+          contenido: 'No se pudo guardar la propuesta. Revisa tu conexión e inténtalo de nuevo.',
+        }])
+        return
+      }
       setComponentes(guardada.componentes)
       setTareas(guardada.tareas)
+    } else {
+      const previa = await obtenerPropuesta(solicitudActual.id)
+      if (previa) {
+        setComponentes(previa.componentes)
+        setTareas(previa.tareas)
+      }
     }
     irA('propuesta')
   }
