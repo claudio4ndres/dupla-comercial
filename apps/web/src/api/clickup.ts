@@ -78,6 +78,32 @@ export async function iniciarConexionClickup(): Promise<string> {
   return data.url
 }
 
+/** Resultado del verificador de la conexión ClickUp (spec 017). */
+export interface ResultadoVerificacionClickup {
+  estado: string
+  mensaje: string
+}
+
+/**
+ * Verifica (y auto-repara) la conexión ClickUp de la empresa: POST
+ * /clickup/verificar prueba el token contra ClickUp y corrige el estado de la
+ * integración ('reconectar' ↔ 'conectado'). Devuelve `null` si el backend no
+ * responde, para que la UI muestre un fallo genérico (spec 017).
+ */
+export async function verificarClickup(): Promise<ResultadoVerificacionClickup | null> {
+  try {
+    const r = await fetch(`${API_BASE}/clickup/verificar`, {
+      method: 'POST',
+      headers: await cabecerasAuthAsync(),
+    })
+    if (!r.ok) throw new Error(`backend respondió ${r.status}`)
+    const data = (await r.json()) as Partial<ResultadoVerificacionClickup>
+    return { estado: data.estado ?? '', mensaje: data.mensaje ?? '' }
+  } catch {
+    return null
+  }
+}
+
 /**
  * Desconecta ClickUp de la empresa (el "Cambiar"). Borra integración + secreto en el
  * backend. Ante fallo de red no propaga (igual que `desconectarCorreo`): el panel

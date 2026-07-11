@@ -9,6 +9,7 @@ vi.mock('../api/clickup', () => ({
   obtenerEstadoClickup: vi.fn(),
   iniciarConexionClickup: vi.fn(),
   desconectarClickup: vi.fn(),
+  verificarClickup: vi.fn(),
   ESTADO_CLICKUP_DESCONECTADO: { proveedor: null, estado: null },
 }))
 
@@ -17,12 +18,14 @@ import {
   desconectarClickup,
   iniciarConexionClickup,
   obtenerEstadoClickup,
+  verificarClickup,
 } from '../api/clickup'
 import { ESTADO_DESCONECTADO, type EstadoCorreo } from '../api/integraciones'
 
 const mockEstadoClickup = obtenerEstadoClickup as ReturnType<typeof vi.fn>
 const mockIniciarClickup = iniciarConexionClickup as ReturnType<typeof vi.fn>
 const mockDesconectarClickup = desconectarClickup as ReturnType<typeof vi.fn>
+const mockVerificarClickup = verificarClickup as ReturnType<typeof vi.fn>
 const noop = () => {}
 
 /** Estado de correo "conectado" a la casilla del piloto (Capsulab). */
@@ -282,5 +285,80 @@ describe('Configuracion (onboarding de conectores)', () => {
     )
     await user.click(screen.getByRole('button', { name: /continuar a la bandeja/i }))
     expect(onIrA).toHaveBeenCalledWith('inbox')
+  })
+})
+
+describe('Configuracion — salud de conectores (spec 017)', () => {
+  beforeEach(() => {
+    mockEstadoClickup.mockResolvedValue({ proveedor: null, estado: null })
+    mockIniciarClickup.mockResolvedValue('https://app.clickup.com/api?state=abc')
+    mockVerificarClickup.mockResolvedValue({
+      estado: 'conectado',
+      mensaje: 'Conexión verificada: 3 listas visibles.',
+    })
+  })
+
+  it('CA1: Gmail en "reconectar" muestra el mensaje 010-T9 y el botón reconecta', async () => {
+    const user = userEvent.setup()
+    const onConectar = vi.fn()
+    render(
+      <Configuracion
+        estadoCorreo={{ proveedor: 'gmail', estado: 'reconectar', casilla: 'javier@capsulab.cl' }}
+        onConectar={onConectar}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    expect(screen.getByText(/la conexión con google expiró/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /reconectar gmail/i }))
+    expect(onConectar).toHaveBeenCalledWith('gmail')
+  })
+
+  it('CA2: ClickUp en "reconectar" muestra el mensaje 010-T9', async () => {
+    mockEstadoClickup.mockResolvedValue({ proveedor: 'clickup', estado: 'reconectar' })
+    render(
+      <Configuracion
+        estadoCorreo={CORREO_CONECTADO}
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    expect(await screen.findByText(/clickup se desconectó/i)).toBeInTheDocument()
+  })
+
+  it('CA3: "Probar conexión" llama al verificador y muestra el resultado', async () => {
+    const user = userEvent.setup()
+    mockEstadoClickup.mockResolvedValue({ proveedor: 'clickup', estado: 'conectado' })
+    render(
+      <Configuracion
+        estadoCorreo={CORREO_CONECTADO}
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    await user.click(await screen.findByRole('button', { name: /probar conexión/i }))
+    expect(mockVerificarClickup).toHaveBeenCalledOnce()
+    expect(await screen.findByText(/conexión verificada: 3 listas/i)).toBeInTheDocument()
+  })
+
+  it('CA3b: si el verificador detecta el token roto, el chip pasa a Reconectar', async () => {
+    const user = userEvent.setup()
+    mockEstadoClickup.mockResolvedValue({ proveedor: 'clickup', estado: 'conectado' })
+    mockVerificarClickup.mockResolvedValue({
+      estado: 'reconectar',
+      mensaje: 'El token de ClickUp dejó de funcionar.',
+    })
+    render(
+      <Configuracion
+        estadoCorreo={CORREO_CONECTADO}
+        onConectar={noop}
+        onDesconectar={noop}
+        onIrA={noop}
+      />,
+    )
+    await user.click(await screen.findByRole('button', { name: /probar conexión/i }))
+    expect(await screen.findByText(/clickup se desconectó/i)).toBeInTheDocument()
   })
 })

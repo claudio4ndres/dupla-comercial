@@ -133,7 +133,7 @@ código (verde), luego refactor. Tareas pequeñas, commit por tarea (en español
 > **NO se hace en esta ola de backend.** Lo edita **Kiro** en `apps/web`
 > (`componentes/Configuracion.tsx`). Se deja documentado para trazabilidad.
 
-- [ ] **T9 · 🤖 (DIFERIDO · Kiro) Mensaje específico por proveedor cuando `estado === 'reconectar'`.**
+- [x] **T9 · 🤖 (DIFERIDO · Kiro) Mensaje específico por proveedor cuando `estado === 'reconectar'`.**
   En la tarjeta del conector: Gmail → *"La conexión con Google expiró. Vuelve a conectar para
   seguir leyendo tu correo y tu Drive."*; ClickUp → *"ClickUp se desconectó. Vuelve a conectar
   para crear tareas."* El `estado` ya viaja en `GET /integraciones/correo` y `GET /clickup/estado`

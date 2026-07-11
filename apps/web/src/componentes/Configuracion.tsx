@@ -4,6 +4,7 @@ import {
   ESTADO_CLICKUP_DESCONECTADO,
   iniciarConexionClickup,
   obtenerEstadoClickup,
+  verificarClickup,
   type EstadoClickup,
 } from '../api/clickup'
 import type { EstadoCorreo } from '../api/integraciones'
@@ -89,7 +90,24 @@ export function Configuracion({
     setEstadoClickUp(ESTADO_CLICKUP_DESCONECTADO)
   }
 
+  // "Probar conexión" (spec 017): POST /clickup/verificar prueba el token contra
+  // ClickUp y auto-repara el estado; el resultado se muestra y el chip se actualiza.
+  const [resultadoVerificacion, setResultadoVerificacion] = useState<string | null>(null)
+  async function probarConexionClickUp() {
+    const r = await verificarClickup()
+    if (!r) {
+      setResultadoVerificacion('No se pudo verificar la conexión. Inténtalo de nuevo.')
+      return
+    }
+    setResultadoVerificacion(r.mensaje)
+    if (r.estado === 'conectado' || r.estado === 'reconectar') {
+      setEstadoClickUp({ proveedor: 'clickup', estado: r.estado } as EstadoClickup)
+    }
+  }
+
   const correoConectado = estadoCorreo.estado === 'conectado'
+  // Token de Google expirado/revocado: la tarjeta pide reconectar (010-T9).
+  const correoReconectar = estadoCorreo.estado === 'reconectar'
   // Mientras App resuelve el estado real, no afirmamos "Sin conectar": la tarjeta
   // queda en "Comprobando…" (solo si aún no sabemos que está conectado).
   const correoComprobando = cargandoCorreo && !correoConectado
@@ -115,20 +133,45 @@ export function Configuracion({
               <span className="conector-ico">📧</span>
               <div className="conector-id">
                 <b>Correo · Gmail</b>
-                <span className="conector-cat">Bandeja de entrada</span>
+                <span className="conector-cat">
+                  Bandeja de entrada · incluye Google Drive (tarifarios de Javo)
+                </span>
               </div>
               <span
                 data-testid="conector-gmail"
                 className={
                   'conector-estado ' +
-                  (correoConectado ? 'on' : correoComprobando ? 'loading' : 'off')
+                  (correoConectado
+                    ? 'on'
+                    : correoReconectar
+                      ? 'warn'
+                      : correoComprobando
+                        ? 'loading'
+                        : 'off')
                 }
               >
-                {correoConectado ? 'Conectado' : correoComprobando ? 'Comprobando…' : 'Sin conectar'}
+                {correoConectado
+                  ? 'Conectado'
+                  : correoReconectar
+                    ? 'Reconectar'
+                    : correoComprobando
+                      ? 'Comprobando…'
+                      : 'Sin conectar'}
               </span>
             </div>
             <div className="conector-body">
-              {correoComprobando ? (
+              {correoReconectar ? (
+                <>
+                  {/* Mensaje por proveedor (spec 010 · T9): sin tokens, solo el estado. */}
+                  <p className="conector-detalle">
+                    La conexión con Google expiró. Vuelve a conectar para seguir leyendo
+                    tu correo y tu Drive.
+                  </p>
+                  <button className="btn primary" onClick={() => onConectar('gmail')}>
+                    Reconectar Gmail
+                  </button>
+                </>
+              ) : correoComprobando ? (
                 <p className="conector-detalle">Comprobando la conexión de tu Gmail…</p>
               ) : correoConectado ? (
                 <>
@@ -178,12 +221,15 @@ export function Configuracion({
                   <button className="btn ghost" onClick={desconectarClickUp}>
                     Cambiar ClickUp
                   </button>
+                  <button className="btn ghost" onClick={() => void probarConexionClickUp()}>
+                    Probar conexión
+                  </button>
                 </>
               ) : clickUpReconectar ? (
                 <>
+                  {/* Mensaje por proveedor (spec 010 · T9). */}
                   <p className="conector-detalle">
-                    Tu conexión con ClickUp dejó de funcionar (acceso revocado o expirado).
-                    Reconéctala para seguir enviando tareas.
+                    ClickUp se desconectó. Vuelve a conectar para crear tareas.
                   </p>
                   <button className="btn primary" onClick={conectarClickUp}>
                     Reconectar ClickUp
@@ -198,6 +244,11 @@ export function Configuracion({
                     Conectar ClickUp
                   </button>
                 </>
+              )}
+              {resultadoVerificacion && (
+                <p className="conector-detalle" role="status">
+                  {resultadoVerificacion}
+                </p>
               )}
             </div>
           </div>
