@@ -28,6 +28,12 @@ vi.mock('../api/propuestas', () => ({
   obtenerPropuesta: vi.fn().mockResolvedValue(null),
 }))
 
+// ── Mock del cliente de Javo (spec 014: el fallo se propaga, sin canned) ─────
+vi.mock('../api/javo', () => ({
+  conversarConJavoOError: vi.fn(),
+}))
+import { conversarConJavoOError } from '../api/javo'
+
 // Importamos los módulos (SolicitudContext aún NO existe — paso rojo del TDD)
 import { SolicitudProvider, useSolicitud } from './SolicitudContext'
 import { SesionProvider, useSesion } from './SesionContext'
@@ -134,5 +140,59 @@ describe('SolicitudContext', () => {
         (m) => m.rol === 'sistema' && /no se pudo guardar/i.test(m.contenido),
       ),
     ).toBe(true)
+  })
+
+  it('CA2/CA3 (014): si Javo falla marca errorJavo y Reintentar reenvía sin duplicar', async () => {
+    const solicitud: Solicitud = {
+      id: 'espiga',
+      remitente: 'Zona Espiga',
+      correo: 'contacto@zonaespiga.cl',
+      tiempo: '09-jun',
+      asunto: 'Sampling de sopaipillas',
+      tipo: 't1',
+      resumen: 'Sampling afuera del Metro.',
+      puntos: [],
+      cuerpo: 'Hola Javo.',
+    }
+
+    let valor: ReturnType<typeof useSolicitud>
+    function Doble({ onValor }: { onValor: (v: ReturnType<typeof useSolicitud>) => void }) {
+      onValor(useSolicitud())
+      return null
+    }
+
+    render(
+      <SesionProvider>
+        <SolicitudProvider>
+          <Doble onValor={(v) => { valor = v }} />
+        </SolicitudProvider>
+      </SesionProvider>,
+    )
+
+    act(() => valor!.abrirSolicitud(solicitud))
+
+    // 1) El backend cae: el turno falla y queda errorJavo (sin respuesta canned).
+    vi.mocked(conversarConJavoOError).mockRejectedValueOnce(new Error('502'))
+    await act(async () => { await valor!.enviarMensaje('cotiza promotoras') })
+
+    expect(valor!.errorJavo).toBe(true)
+    const turnosUsuario = valor!.mensajes.filter((m) => m.rol === 'usuario').length
+    expect(turnosUsuario).toBe(1)
+
+    // 2) Reintentar: reenvía el MISMO historial (no duplica el turno del usuario).
+    vi.mocked(conversarConJavoOError).mockResolvedValueOnce({
+      texto: 'Listo, promotoras a $240.000.',
+      componentes: [],
+      tareas: [],
+      fuentes: [],
+    })
+    await act(async () => { await valor!.reintentarMensaje() })
+
+    expect(valor!.errorJavo).toBe(false)
+    expect(valor!.mensajes.filter((m) => m.rol === 'usuario').length).toBe(1)
+    expect(valor!.mensajes.at(-1)).toEqual({
+      rol: 'javo',
+      contenido: 'Listo, promotoras a $240.000.',
+    })
   })
 })

@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { conversarConJavo } from './javo'
+import { conversarConJavoOError } from './javo'
 
 /** `Response` mínima (sólo ok/status/json, lo que usa la capa de API). */
 function respuesta(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response
 }
 
-describe('api/javo · conversarConJavo (005)', () => {
+describe('api/javo · conversarConJavoOError (005 + 014)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -22,7 +22,7 @@ describe('api/javo · conversarConJavo (005)', () => {
     }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta(backend)))
 
-    const r = await conversarConJavo({
+    const r = await conversarConJavoOError({
       solicitudId: 's1',
       tipo: 't1',
       mensajes: [{ rol: 'usuario', contenido: 'cotiza promotoras' }],
@@ -39,13 +39,21 @@ describe('api/javo · conversarConJavo (005)', () => {
     expect(r.fuentes[0]).toEqual({ titulo: 'Tarifario', referencia: 'Drive: Tarifario.xlsx' })
   })
 
-  it('ante error del backend cae a la respuesta offline (texto fallback, sin componentes/fuentes)', async () => {
+  it('CA1: ante error del backend RECHAZA (ya no hay respuesta pregrabada)', async () => {
+    // Bug 014: antes un 502 devolvía un texto canned y Javo "aparentaba" funcionar
+    // con el backend caído. Ahora el fallo se propaga para que la UI lo muestre.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta({}, false, 502)))
 
-    const r = await conversarConJavo({ solicitudId: 's1', tipo: 't1', mensajes: [] })
+    await expect(
+      conversarConJavoOError({ solicitudId: 's1', tipo: 't1', mensajes: [] }),
+    ).rejects.toThrow()
+  })
 
-    expect(r.texto).toBeTruthy() // hay texto (respuesta canned)
-    expect(r.componentes).toEqual([])
-    expect(r.fuentes).toEqual([])
+  it('CA1: ante red caída (fetch rechaza) también propaga', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('red caída')))
+
+    await expect(
+      conversarConJavoOError({ solicitudId: 's1', tipo: 't1', mensajes: [] }),
+    ).rejects.toThrow()
   })
 })

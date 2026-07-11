@@ -69,51 +69,33 @@ function aTarea(t: TareaBackend): Tarea {
 
 /**
  * Envía la conversación al backend y devuelve la respuesta de Javo (texto +
- * componentes propuestos + fuentes). Si el backend cae, usa una respuesta simulada
- * (demo offline) sin componentes ni fuentes.
+ * componentes propuestos + fuentes). PROPAGA el error (patrón `...OError`) si el
+ * backend no responde: la UI muestra el fallo con Reintentar (spec 014) — ya no
+ * hay respuesta pregrabada que disfrace un backend caído.
  */
-export async function conversarConJavo(params: {
+export async function conversarConJavoOError(params: {
   solicitudId: string
   tipo: TipoConfirmado
   mensajes: Mensaje[]
 }): Promise<RespuestaJavo> {
-  try {
-    const r = await fetch(`${API_BASE}/conversaciones/responder`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(await cabecerasAuthAsync()) },
-      body: JSON.stringify({
-        solicitud_id: params.solicitudId,
-        tipo: params.tipo,
-        // No mandamos los mensajes de sistema (avisos de UI).
-        mensajes: params.mensajes
-          .filter((m) => m.rol !== 'sistema')
-          .map((m) => ({ rol: m.rol, contenido: m.contenido })),
-      }),
-    })
-    if (!r.ok) throw new Error(`backend respondió ${r.status}`)
-    const data = (await r.json()) as RespuestaJavoBackend
-    return {
-      texto: data.texto?.trim() || respuestaFallback(params.tipo),
-      componentes: (data.componentes ?? []).map(aComponente),
-      tareas: (data.tareas ?? []).map(aTarea),
-      fuentes: data.fuentes ?? [],
-    }
-  } catch {
-    // Backend caído/no cableado: demo offline (sólo texto canned).
-    return { texto: respuestaFallback(params.tipo), componentes: [], tareas: [], fuentes: [] }
+  const r = await fetch(`${API_BASE}/conversaciones/responder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await cabecerasAuthAsync()) },
+    body: JSON.stringify({
+      solicitud_id: params.solicitudId,
+      tipo: params.tipo,
+      // No mandamos los mensajes de sistema (avisos de UI).
+      mensajes: params.mensajes
+        .filter((m) => m.rol !== 'sistema')
+        .map((m) => ({ rol: m.rol, contenido: m.contenido })),
+    }),
+  })
+  if (!r.ok) throw new Error(`backend respondió ${r.status}`)
+  const data = (await r.json()) as RespuestaJavoBackend
+  return {
+    texto: data.texto?.trim() || '(sin respuesta)',
+    componentes: (data.componentes ?? []).map(aComponente),
+    tareas: (data.tareas ?? []).map(aTarea),
+    fuentes: data.fuentes ?? [],
   }
-}
-
-/** Respuesta simulada cuando el LLM no está disponible (demo offline). */
-export function respuestaFallback(tipo: TipoConfirmado): string {
-  if (tipo === 't1') {
-    return 'Perfecto. Entonces dejo: catering de sopaipillas, 2 promotores, producto e insumos y uniformes para 5h diarias. Sumo coordinación de producción. Los valores los cruzo con el tarifario del Drive. ¿Genero la propuesta? 🧾'
-  }
-  return (
-    'Listo, te dejo 3 conceptos de alto impacto:\n' +
-    '1) Proyección mapping de un auto F1 en una fachada del centro.\n' +
-    '2) Auto a escala real con letrero LED en punto de alto flujo.\n' +
-    '3) Activación de sampling con simulador de pit-stop.\n' +
-    '¿Cuál aterrizamos?'
-  )
 }

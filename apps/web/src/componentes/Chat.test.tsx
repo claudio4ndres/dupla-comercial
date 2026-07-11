@@ -190,3 +190,20 @@ describe('Chat — generar propuesta', () => {
     expect(onGenerarPropuesta).toHaveBeenCalledOnce()
   })
 })
+
+describe('Chat — fallo de Javo (spec 014)', () => {
+  it('con errorJavo muestra el aviso y Reintentar reenvía', async () => {
+    const user = userEvent.setup()
+    const onReintentar = vi.fn()
+    render(<Chat {...BASE_PROPS} errorJavo onReintentar={onReintentar} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/javo no está disponible/i)
+    await user.click(screen.getByRole('button', { name: /reintentar/i }))
+    expect(onReintentar).toHaveBeenCalledOnce()
+  })
+
+  it('sin errorJavo no hay aviso de fallo', () => {
+    render(<Chat {...BASE_PROPS} />)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})

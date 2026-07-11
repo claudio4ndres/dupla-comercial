@@ -2,7 +2,7 @@
 // Extracción desde App.tsx (Iteración 2 del refactor de contextos).
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { conversarConJavo } from '../api/javo'
+import { conversarConJavoOError } from '../api/javo'
 import { obtenerRecursosDrive } from '../api/recursos'
 import { iniciarConversacion, obtenerCotizacionEnCurso, obtenerHistorialConversacion, obtenerSugerencias } from '../api/conversaciones'
 import { guardarPropuesta, obtenerPropuesta } from '../api/propuestas'
@@ -30,10 +30,14 @@ export interface SolicitudContextValor {
   recursos: RecursoDrive[]
   /** Chips dinámicos generados por Haiku (vacío mientras se cargan). */
   chips: string[]
+  /** El último turno de Javo falló (backend caído): la UI ofrece Reintentar (014). */
+  errorJavo: boolean
   // Acciones
   abrirSolicitud: (s: Solicitud) => void
   iniciarChat: (tipo: TipoConfirmado) => void
   enviarMensaje: (texto: string) => Promise<void>
+  /** Reenvía el último turno fallido SIN duplicar el mensaje del usuario (014). */
+  reintentarMensaje: () => Promise<void>
   generarPropuesta: () => Promise<void>
   setTareas: (tareas: Tarea[]) => void
   // Setters expuestos para que App.tsx los use (abrirPropuestaDesdeLista)
@@ -59,6 +63,7 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
   const [enviando, setEnviando] = useState(false)
   const [recursos, setRecursos] = useState<RecursoDrive[]>([])
   const [chips, setChips] = useState<string[]>([])
+  const [errorJavo, setErrorJavo] = useState(false)
 
   // ─── Efecto: recursos del Drive de la empresa (panel del chat) ─────────────
   useEffect(() => {
@@ -127,6 +132,29 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
 
   // ─── Enviar mensaje al chat con Javo ───────────────────────────────────────
 
+  async function _conversar(historial: Mensaje[]) {
+    if (!solicitudActual) return
+    setEnviando(true)
+    try {
+      const r = await conversarConJavoOError({
+        solicitudId: solicitudActual.id,
+        tipo,
+        mensajes: historial,
+      })
+      setErrorJavo(false)
+      setMensajes((prev) => [...prev, { rol: 'javo', contenido: r.texto }])
+      if (r.componentes.length) setComponentes(r.componentes)
+      if (r.tareas.length) setTareas(r.tareas)
+      if (r.fuentes.length) setFuentes(r.fuentes)
+    } catch {
+      // Backend caído: el turno del usuario ya está en el hilo; la UI muestra
+      // el aviso con Reintentar (014). Ya no hay respuesta pregrabada.
+      setErrorJavo(true)
+    } finally {
+      setEnviando(false)
+    }
+  }
+
   async function enviarMensaje(texto: string) {
     if (!solicitudActual) return
     const nuevos: Mensaje[] = [...mensajes, { rol: 'usuario', contenido: texto }]
@@ -134,15 +162,13 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
       nuevos.push({ rol: 'sistema', contenido: 'Javo está buscando referencias y opciones en internet…' })
     }
     setMensajes(nuevos)
-    setEnviando(true)
+    await _conversar(nuevos)
+  }
 
-    const r = await conversarConJavo({ solicitudId: solicitudActual.id, tipo, mensajes: nuevos })
-    setMensajes((prev) => [...prev, { rol: 'javo', contenido: r.texto }])
-    setEnviando(false)
-
-    if (r.componentes.length) setComponentes(r.componentes)
-    if (r.tareas.length) setTareas(r.tareas)
-    if (r.fuentes.length) setFuentes(r.fuentes)
+  async function reintentarMensaje() {
+    // Reenvía el historial TAL CUAL (el turno del usuario ya está): no duplica.
+    if (!errorJavo) return
+    await _conversar(mensajes)
   }
 
   // ─── Generar propuesta: persistir y navegar ────────────────────────────────
@@ -184,9 +210,11 @@ export function SolicitudProvider({ children }: { children: ReactNode }) {
     enviando,
     recursos,
     chips,
+    errorJavo,
     abrirSolicitud,
     iniciarChat,
     enviarMensaje,
+    reintentarMensaje,
     generarPropuesta,
     setTareas,
     setSolicitudActual,

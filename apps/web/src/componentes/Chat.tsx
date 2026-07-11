@@ -10,6 +10,7 @@ import {
   type TipoConfirmado,
 } from '../tipos'
 import type { RecursoDrive } from '../datosMock'
+import { BannerError } from './EstadoLista'
 
 interface Props {
   solicitud: Solicitud
@@ -23,7 +24,11 @@ interface Props {
   /** Chips dinámicos generados por Haiku (vacío = usa fallback estático). */
   chips?: string[]
   enviando: boolean
+  /** El último turno de Javo falló: se muestra el aviso con Reintentar (014). */
+  errorJavo?: boolean
   onEnviar: (texto: string) => void
+  /** Reenvía el último turno fallido (014). */
+  onReintentar?: () => void
   onGenerarPropuesta: () => void
 }
 
@@ -32,7 +37,7 @@ const CHIPS_FALLBACK: Record<TipoConfirmado, string[]> = {
   t2: ['Busca opciones en internet 🌐', 'Dame 3 ideas de alto impacto', 'Aterriza la idea ganadora'],
 }
 
-export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos, chips, enviando, onEnviar, onGenerarPropuesta }: Props) {
+export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos, chips, enviando, errorJavo, onEnviar, onReintentar, onGenerarPropuesta }: Props) {
   const [texto, setTexto] = useState('')
   const cajaMensajes = useRef<HTMLDivElement>(null)
   const areaRef = useRef<HTMLTextAreaElement>(null)
@@ -92,6 +97,12 @@ export function Chat({ solicitud, tipo, mensajes, componentes, fuentes, recursos
                   <span />
                   <span />
                 </div>
+              )}
+              {errorJavo && !enviando && (
+                <BannerError
+                  mensaje="Javo no está disponible en este momento."
+                  onReintentar={onReintentar}
+                />
               )}
             </div>
 

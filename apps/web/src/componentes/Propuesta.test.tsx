@@ -129,3 +129,28 @@ describe('Propuesta — botones de acción', () => {
     expect(onExportarPpt).toHaveBeenCalledOnce()
   })
 })
+
+describe('Propuesta — export fallido (spec 014)', () => {
+  it('si el export falla, muestra un banner de error; si funciona, no', async () => {
+    const user = userEvent.setup()
+    const exportaQueFalla = vi.fn().mockResolvedValue(false)
+    render(<Propuesta {...BASE_PROPS} onExportarExcel={exportaQueFalla} />)
+
+    await user.click(screen.getByRole('button', { name: /excel interno/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo/i)
+
+    // Un export exitoso posterior limpia el banner.
+    exportaQueFalla.mockResolvedValue(true)
+    await user.click(screen.getByRole('button', { name: /excel interno/i }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('el PPT fallido también avisa', async () => {
+    const user = userEvent.setup()
+    const ppt = vi.fn().mockResolvedValue(false)
+    render(<Propuesta {...BASE_PROPS} onExportarPpt={ppt} />)
+
+    await user.click(screen.getByRole('button', { name: /ppt/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo/i)
+  })
+})

@@ -1,17 +1,28 @@
+import { useState } from 'react'
 import { costoLinea, fmtCLP, MARGEN_VENTA, valorVenta, type Componente } from '../tipos'
+import { BannerError } from './EstadoLista'
 
 interface Props {
   componentes: Componente[]
   onVolver: () => void
   onArmarTareas: () => void
   /** Descarga la cotización como .xlsx con el theme Capsulab (007). `vista`:
-   * `interno` (costos + margen) o `cliente` (solo precios de venta). */
-  onExportarExcel?: (vista: 'interno' | 'cliente') => void
+   * `interno` (costos + margen) o `cliente` (solo precios de venta). Puede devolver
+   * `Promise<boolean>` (¿se disparó la descarga?) para avisar el fallo (014). */
+  onExportarExcel?: (vista: 'interno' | 'cliente') => void | Promise<boolean>
   /** Descarga la propuesta como un DECK .pptx (cara comercial, vista cliente) — T18. */
-  onExportarPpt?: () => void
+  onExportarPpt?: () => void | Promise<boolean>
 }
 
 export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExcel, onExportarPpt }: Props) {
+  // Export fallido (404 sin propuesta, backend caído): banner visible, no silencio (014).
+  const [errorExport, setErrorExport] = useState(false)
+
+  async function _conResultado(resultado: void | Promise<boolean>) {
+    const ok = await resultado
+    setErrorExport(ok === false)
+  }
+
   const exportar = onExportarExcel ?? (() => alert('Exportar a Excel'))
   const exportarPpt =
     onExportarPpt ?? (() => alert('Exportar propuesta a PPT — se generará la presentación para el cliente'))
@@ -78,16 +89,20 @@ export function Propuesta({ componentes, onVolver, onArmarTareas, onExportarExce
           <button className="btn primary" onClick={onArmarTareas}>
             Armar tareas ▸
           </button>
-          <button className="btn ghost" onClick={exportarPpt}>
+          <button className="btn ghost" onClick={() => void _conResultado(exportarPpt())}>
             ⤓ PPT
           </button>
-          <button className="btn ghost" onClick={() => exportar('interno')}>
+          <button className="btn ghost" onClick={() => void _conResultado(exportar('interno'))}>
             ⤓ Excel interno
           </button>
-          <button className="btn ghost" onClick={() => exportar('cliente')}>
+          <button className="btn ghost" onClick={() => void _conResultado(exportar('cliente'))}>
             ⤓ Excel cliente
           </button>
         </div>
+
+        {errorExport && (
+          <BannerError mensaje="No se pudo generar la descarga. Inténtalo de nuevo." />
+        )}
       </div>
     </section>
   )

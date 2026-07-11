@@ -49,9 +49,11 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
     enviando,
     recursos,
     chips,
+    errorJavo,
     abrirSolicitud,
     iniciarChat,
     enviarMensaje,
+    reintentarMensaje,
     generarPropuesta,
   } = useSolicitud()
 
@@ -166,7 +168,9 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
                 recursos={recursos}
                 chips={chips}
                 enviando={enviando}
+                errorJavo={errorJavo}
                 onEnviar={enviarMensaje}
+                onReintentar={reintentarMensaje}
                 onGenerarPropuesta={generarPropuesta}
               />
             ) : (
@@ -191,11 +195,11 @@ function App({ onNavegar = (url: string) => window.location.assign(url) }: AppPr
                 onArmarTareas={() => irA('tareas')}
                 onExportarExcel={
                   solicitudActual
-                    ? (vista) => void descargarCotizacionExcel(solicitudActual.id, vista)
+                    ? (vista) => descargarCotizacionExcel(solicitudActual.id, vista)
                     : undefined
                 }
                 onExportarPpt={
-                  solicitudActual ? () => void descargarCotizacionPpt(solicitudActual.id) : undefined
+                  solicitudActual ? () => descargarCotizacionPpt(solicitudActual.id) : undefined
                 }
               />
             ) : (
