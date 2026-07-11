@@ -92,6 +92,25 @@ describe('Bandeja', () => {
     expect(onConectar).toHaveBeenCalledWith('gmail')
   })
 
+  it('Outlook e IMAP aparecen deshabilitados con "Próximamente" (solo Gmail conecta)', () => {
+    // App.tsx solo cablea Gmail (`if (p !== 'gmail') return`): los otros botones
+    // no deben ofrecer un clic muerto sin feedback (mismo patrón que Jira en
+    // Configuración).
+    render(
+      <Bandeja
+        solicitudes={[]}
+        onAbrir={noop}
+        proveedor={null}
+        onConectar={noop}
+        onDesconectar={noop}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /gmail/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /outlook/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /otro \(imap\)/i })).toBeDisabled()
+    expect(screen.getAllByText(/próximamente/i).length).toBeGreaterThanOrEqual(2)
+  })
+
   it('con un proveedor conectado, muestra que está escuchando nuevos correos', () => {
     render(
       <Bandeja

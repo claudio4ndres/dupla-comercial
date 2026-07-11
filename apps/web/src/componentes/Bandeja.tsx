@@ -64,10 +64,19 @@ export function Bandeja({
               </span>
             </div>
             <div className="connect-options">
+              {/* Solo Gmail está cableado al backend; los demás van deshabilitados
+                  con "Próximamente" (mismo patrón que Jira en Configuración) para
+                  no ofrecer un clic muerto sin feedback. */}
               {PROVEEDORES_CORREO.map((p) => (
-                <button key={p.id} className="btn ghost prov" onClick={() => onConectar(p.id)}>
+                <button
+                  key={p.id}
+                  className="btn ghost prov"
+                  disabled={p.id !== 'gmail'}
+                  onClick={() => onConectar(p.id)}
+                >
                   <span className="prov-ico">{p.icono}</span>
                   {p.nombre}
+                  {p.id !== 'gmail' && <span className="badge new">Próximamente</span>}
                 </button>
               ))}
             </div>
