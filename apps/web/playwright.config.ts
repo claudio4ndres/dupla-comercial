@@ -29,6 +29,11 @@ export default defineConfig({
     ...(process.env.E2E_CHROMIUM && {
       launchOptions: { executablePath: process.env.E2E_CHROMIUM },
     }),
+    // Para VER la suite en el Google Chrome instalado en tu máquina:
+    //   E2E_CANAL=chrome npx playwright test --project=ui --headed
+    // (excluyente con E2E_CHROMIUM; `chrome` usa tu navegador de escritorio).
+    ...(!process.env.E2E_CHROMIUM &&
+      process.env.E2E_CANAL && { channel: process.env.E2E_CANAL }),
   },
   projects: [
     // Suite mockeada: toda la app, determinista, sin servicios externos.

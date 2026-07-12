@@ -54,3 +54,21 @@ la suite real y desactiva el webServer local).
   fallos puntuales (502/abort) antes del comportamiento feliz.
 - No asertar textos largos de Javo: usar datos estructurados (componentes,
   totales, fuentes) y testids.
+
+## Ver la suite corriendo en TU Google Chrome (con ventana)
+
+La suite `ui` no necesita backend ni Supabase: solo `npm install` y un navegador.
+Para verla en vivo en el Chrome instalado en tu máquina:
+
+```bash
+cd apps/web
+E2E_CANAL=chrome npx playwright test --project=ui --headed
+# o paso a paso con el inspector de Playwright:
+E2E_CANAL=chrome npx playwright test --project=ui --headed --debug
+# o con la UI interactiva de Playwright:
+npm run test:e2e:ui
+```
+
+`E2E_CANAL=chrome` usa tu Google Chrome de escritorio (canal `chrome` de
+Playwright); `--headed` abre la ventana para que veas cada clic. Sin la
+variable, Playwright usa su Chromium embebido (headless, como en CI).
